@@ -37,7 +37,7 @@ class TcnDataset(Dataset):
 			trial_names = [trial_names] if not isinstance(trial_names, list) else trial_names
 
 		# Load data
-		data = [list(self._load_trial_data(trial_name)) for trial_name in trial_names]
+		data = [list(self._load_trial_data_train(trial_name)) for trial_name in trial_names]
 
 		# add zero padding to allow for concatenation
 		data, trial_sequence_lengths = self._add_zero_padding(data)
@@ -66,17 +66,59 @@ class TcnDataset(Dataset):
 
 		return trial_names
 
+	def _load_trial_data_train(self, trial_name: str):
+		'''Loads data from a single trial.'''
+		# print(f"Loading {trial_name}.")
+
+		# load input data
+		# 搜索文件夹中结尾为"_exo.csv"但不是"_power_exo.csv"的文件（不区分大小写）
+		trial_dir = os.path.join(self.data_dir, trial_name)
+		input_file_path = None
+		for file in os.listdir(trial_dir):
+			# 将文件名转换为小写后进行比较
+			file_lower = file.lower()
+			if file_lower.endswith("exo.csv") and not file_lower.endswith("power_exo.csv"):
+				input_file_path = os.path.join(trial_dir, file)  # 使用原始文件名构建路径
+				break
+
+		if input_file_path is None:
+			raise FileNotFoundError(f"No file ending with '_exo.csv' (excluding '_power_exo.csv') found in {trial_dir}")
+
+		participant = trial_name.split("/")[0].split("\\")[0]  # get participant name for body mass normalization
+		if participant not in self.participant_masses:
+			print(f"Warning - {participant} mass was not provided.")
+		input_data = self._load_input_data(input_file_path, body_mass=self.participant_masses.get(participant, 1.))
+
+		# load label data
+		# 搜索文件夹中结尾为"_moment_filt.csv"的文件（不区分大小写）
+		label_file_path = None
+		for file in os.listdir(trial_dir):
+			# 将文件名转换为小写后进行比较
+			file_lower = file.lower()
+			if file_lower.endswith("_moment_filt.csv"):
+				label_file_path = os.path.join(trial_dir, file)  # 使用原始文件名构建路径
+				break
+
+		if label_file_path is None:
+			raise FileNotFoundError(f"No file ending with '_moment_filt.csv' found in {trial_dir}")
+
+		label_data = self._load_label_data(label_file_path)
+
+		return input_data, label_data
+
 	def _load_trial_data(self, trial_name: str):
 		'''Loads data from a single trial.'''
-		print(f"Loading {trial_name}.")
+		# print(f"Loading {trial_name}.")
 		
 		# load input data
+		## 改为搜索sos.path.join(self.data_dir, trial_name）文件夹中结尾为"exo.csv"的文件
 		input_file_path = os.path.join(self.data_dir, trial_name, "Exo.csv")
 		participant = trial_name.split("/")[0].split("\\")[0] # get participant name for body mass normalization
 		if participant not in self.participant_masses:
 			print(f"Warning - {participant} mass was not provided.")
 		input_data = self._load_input_data(input_file_path, body_mass = self.participant_masses.get(participant, 1.))
 
+		##  改为搜索sos.path.join(self.data_dir, trial_name）文件夹中结尾为“moment_filt.csv“的文件
 		# load label data
 		label_file_path = os.path.join(self.data_dir, trial_name, "Joint_Moments_Filt.csv")
 		label_data = self._load_label_data(label_file_path)

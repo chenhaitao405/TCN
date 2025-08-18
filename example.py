@@ -71,7 +71,7 @@ def main():
 							side = config.side,
 							participant_masses = config.participant_masses,
 							device = device)
-	input_data, label_data, trial_sequence_lengths = dataset[:]
+	input_data, label_data, trial_sequence_lengths = dataset
 
 	# Compute model estimates
 	with torch.no_grad():
