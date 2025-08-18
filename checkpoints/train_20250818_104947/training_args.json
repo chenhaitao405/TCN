@@ -1,0 +1,14 @@
+{
+  "config_path": "configs.train.allsensor_config.py",
+  "device": "cuda",
+  "epochs": 100,
+  "batch_size": 16,
+  "lr": 0.0001,
+  "val_split": 0.1,
+  "save_dir": "checkpoints",
+  "save_interval": 10,
+  "use_pretrained": true,
+  "clip_grad": 1.0,
+  "use_tensorboard": true,
+  "plot_interval": 5
+}

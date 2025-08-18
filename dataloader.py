@@ -37,7 +37,7 @@ class TcnDataset(Dataset):
 			trial_names = [trial_names] if not isinstance(trial_names, list) else trial_names
 
 		# Load data
-		data = [list(self._load_trial_data_train(trial_name)) for trial_name in trial_names]
+		data = [list(self._load_trial_data(trial_name)) for trial_name in trial_names]
 
 		# add zero padding to allow for concatenation
 		data, trial_sequence_lengths = self._add_zero_padding(data)

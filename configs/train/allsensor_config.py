@@ -1,7 +1,7 @@
 import os
 
 # relative file path to trained model
-model_path = os.path.join("models", "trained_tcn.tar")
+model_path = os.path.join("models", "final_model.tar")
 
 # relative path to data
 data_dir = os.path.join("/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed")

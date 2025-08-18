@@ -16,11 +16,20 @@ config = load_config(args.config_path)
 
 
 def load_model(device: torch.device):
-	'''Creates TCN and loads pretrained weights.'''
-	model_info = torch.load(config.model_path, map_location = device)
+	import inspect
+	model_info = torch.load(config.model_path, map_location=device)
 	state_dict = model_info["state_dict"]
-	del model_info["state_dict"]
-	tcn = TCN(**model_info).to(device)
+
+	# 获取TCN类的初始化参数
+	tcn_signature = inspect.signature(TCN.__init__)
+	tcn_param_names = [param.name for param in tcn_signature.parameters.values()
+					   if param.name != 'self']
+
+	# 只传递TCN需要的参数
+	tcn_params = {k: v for k, v in model_info.items()
+				  if k in tcn_param_names}
+
+	tcn = TCN(**tcn_params).to(device)
 	tcn.load_state_dict(state_dict)
 	return tcn
 
@@ -71,7 +80,7 @@ def main():
 							side = config.side,
 							participant_masses = config.participant_masses,
 							device = device)
-	input_data, label_data, trial_sequence_lengths = dataset
+	input_data, label_data, trial_sequence_lengths = dataset[:]
 
 	# Compute model estimates
 	with torch.no_grad():
