@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from config_utils import load_config
+from utils import load_config, get_or_compute_valid_indices
 from dataloader import TcnDataset
 from tcn import TCN
 from utils import collate_function
@@ -668,16 +668,8 @@ def main():
     full_dataset = ConcatDataset(datasets)
     print(f"Total dataset size: {len(full_dataset)} trials")
 
-    # Filter out trials with NaN
-    print("\nFiltering trials with NaN...")
-    valid_indices = []
-    for i in tqdm(range(len(full_dataset)), desc="Checking trials"):
-        inputs, labels, seq_lengths = full_dataset[i]
-        if not torch.isnan(inputs).any() and not torch.isnan(labels).any():
-            valid_indices.append(i)
-
-    print(
-        f"Valid trials: {len(valid_indices)}/{len(full_dataset)} ({100 * len(valid_indices) / len(full_dataset):.1f}%)")
+    # 获取或计算valid indices（会自动使用缓存）
+    valid_indices = get_or_compute_valid_indices(full_dataset, config)
 
     # Apply max_samples limit if specified
     if args.max_samples and len(valid_indices) > args.max_samples:

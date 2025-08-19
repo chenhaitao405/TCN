@@ -12,7 +12,7 @@ import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import ConcatDataset
 
-from config_utils import load_config
+from utils import load_config, get_or_compute_valid_indices
 from dataloader import TcnDataset
 from tcn import TCN
 from utils import (
@@ -602,15 +602,8 @@ def main():
     full_dataset = ConcatDataset(datasets)
     print(f"Total dataset size: {len(full_dataset)} trials")
 
-    # Split dataset
-    ## 过滤含nan的数据
-    print("Filtering trials with NaN...")
-    valid_indices = []
-    for i in tqdm(range(len(full_dataset)), desc="Checking trials"):
-        inputs, labels, seq_lengths = full_dataset[i]
-        # 只检查输入和标签的原始NaN，不是模型产生的
-        if not torch.isnan(inputs).any() and not torch.isnan(labels).any():
-            valid_indices.append(i)
+    # 获取或计算valid indices（会自动使用缓存）
+    valid_indices = get_or_compute_valid_indices(full_dataset, config)
 
     print(
         f"Valid trials: {len(valid_indices)}/{len(full_dataset)} ({100 * len(valid_indices) / len(full_dataset):.1f}%)")

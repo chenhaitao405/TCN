@@ -5,7 +5,7 @@ from tqdm import tqdm
 import pandas as pd
 import os
 
-from config_utils import load_config
+from utils import load_config
 from dataloader import TcnDataset
 from utils import collate_function
 

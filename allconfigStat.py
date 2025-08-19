@@ -11,7 +11,7 @@ from pathlib import Path
 # Add the parent directory to sys.path to import modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config_utils import load_config
+from utils import load_config
 from tcn import TCN
 from dataloader import TcnDataset
 

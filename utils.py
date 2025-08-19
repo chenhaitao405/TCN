@@ -1,7 +1,16 @@
 import torch
 from typing import List, Tuple
 from tcn import TCN
+import importlib
 
+
+def load_config(config_path: str):
+	'''Load config file as module.'''
+	config_path = config_path.replace("/", ".").replace("\\", ".")
+	if config_path.endswith(".py"):
+		config_path = config_path[:-3]
+	print(f"Loading config file from {config_path}.")
+	return importlib.import_module(config_path)
 
 def load_model_architecture(model_path: str, device: torch.device) -> TCN:
     """
@@ -138,3 +147,51 @@ def collate_function(batch, device):
     # 堆叠后形状为 [32, 25, max_seq_len]
     return torch.stack(padded_inputs), torch.stack(padded_labels), seq_lengths
 
+def get_or_compute_valid_indices(full_dataset, config, cache_dir='cache'):
+    """快速获取或计算valid indices"""
+    import os
+    import json
+    import hashlib
+    from tqdm import tqdm
+
+    # 创建缓存目录
+    os.makedirs(cache_dir, exist_ok=True)
+
+    # 生成缓存文件名
+    cache_key = str(config.data_dirs) + str(config.input_names) + str(config.side)
+    cache_hash = hashlib.md5(cache_key.encode()).hexdigest()[:8]
+    cache_path = os.path.join(cache_dir, f'valid_indices_{cache_hash}.json')
+
+    # 尝试加载缓存
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, 'r') as f:
+                cache_data = json.load(f)
+            if cache_data['total_trials'] == len(full_dataset):
+                print(f"Loaded cached valid indices: {len(cache_data['valid_indices'])} valid trials")
+                return cache_data['valid_indices']
+        except:
+            pass
+
+    # 计算valid indices
+    print("Filtering trials with NaN...")
+    valid_indices = []
+    for i in tqdm(range(len(full_dataset)), desc="Checking trials"):
+        inputs, labels, seq_lengths = full_dataset[i]
+        if not torch.isnan(inputs).any() and not torch.isnan(labels).any():
+            valid_indices.append(i)
+
+    print(
+        f"Valid trials: {len(valid_indices)}/{len(full_dataset)} ({100 * len(valid_indices) / len(full_dataset):.1f}%)")
+
+    # 保存缓存
+    cache_data = {
+        'valid_indices': valid_indices,
+        'total_trials': len(full_dataset),
+        'creation_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    with open(cache_path, 'w') as f:
+        json.dump(cache_data, f)
+    print(f"Saved cache to: {cache_path}")
+
+    return valid_indices

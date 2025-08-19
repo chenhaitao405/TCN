@@ -1,7 +1,7 @@
 import argparse
 from typing import List
 import torch
-from config_utils import load_config
+from utils import load_config
 from tcn import TCN
 from dataloader import TcnDataset
 

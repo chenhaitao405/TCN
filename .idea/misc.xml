@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="TCN" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="TCN" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Remote Python 3.7.1 (sftp://lenovo@192.168.72.121:22/home/lenovo/anaconda3/envs/TCN/bin/python3)" project-jdk-type="Python SDK" />
 </project>
