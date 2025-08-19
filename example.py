@@ -1,9 +1,9 @@
 import argparse
 from typing import List
 import torch
-from utils import load_config
-from tcn import TCN
-from dataloader import TcnDataset
+from utils.config_utils import ConfigManager
+from utils.tcn import TCN
+from utils.TCNdataset import TcnDataset
 
 # parse CLI arguments
 parser = argparse.ArgumentParser()
@@ -12,7 +12,8 @@ parser.add_argument("--device", type = str, default = "cpu", help = "Device to h
 args = parser.parse_args()
 
 # load config
-config = load_config(args.config_path)
+config_manager = ConfigManager()
+config = config_manager.load_config(args.config_path)
 
 
 def load_model(device: torch.device):

@@ -1,251 +1,19 @@
+"""
+Refactored training script for TCN model.
+"""
 import argparse
-import os
-from datetime import datetime
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
-import inspect
-import json
-import matplotlib.pyplot as plt
 import numpy as np
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import ConcatDataset
 
-from utils import load_config, get_or_compute_valid_indices
-from dataloader import TcnDataset
-from tcn import TCN
-from utils import (
-    compute_rmse,
-    process_batch,
-    save_checkpoint,
-    collate_function
-)
+# Import custom modules
+from utils.config_utils import ConfigManager
+from utils.model_loader import ModelLoader
+from utils.data_loader import DataManager
+from utils.metrics import RMSELoss, MetricsComputer
+from utils.visualization import TrainingVisualizer
 
-
-class RMSELoss(nn.Module):
-    """RMSE Loss function"""
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, predictions, targets):
-        return torch.sqrt(torch.mean((predictions - targets) ** 2))
-
-
-class TrainingVisualizer:
-    """Handle training visualization and logging"""
-
-    def __init__(self, save_dir, use_tensorboard=True):
-        self.save_dir = save_dir
-        self.use_tensorboard = use_tensorboard
-
-        # Create directories
-        self.plots_dir = os.path.join(save_dir, 'plots')
-        os.makedirs(self.plots_dir, exist_ok=True)
-
-        # Initialize tensorboard if requested
-        if use_tensorboard:
-            self.tb_dir = os.path.join(save_dir, 'tensorboard')
-            self.writer = SummaryWriter(self.tb_dir)
-            print(f"Tensorboard logs saved to: {self.tb_dir}")
-            print(f"Run 'tensorboard --logdir={self.tb_dir}' to view")
-        else:
-            self.writer = None
-
-        # Storage for metrics
-        self.metrics = {
-            'epochs': [],
-            'train_loss': [],
-            'val_loss': [],
-            'learning_rate': [],
-            'batch_losses': []  # Store all batch losses for distribution plot
-        }
-
-    def log_epoch(self, epoch, train_loss, val_loss, lr):
-        """Log metrics for an epoch"""
-        self.metrics['epochs'].append(epoch)
-        self.metrics['train_loss'].append(train_loss)
-        self.metrics['val_loss'].append(val_loss)
-        self.metrics['learning_rate'].append(lr)
-
-        # Log to tensorboard
-        if self.writer:
-            self.writer.add_scalar('Loss/Train', train_loss, epoch)
-            self.writer.add_scalar('Loss/Validation', val_loss, epoch)
-            self.writer.add_scalar('Learning_Rate', lr, epoch)
-            self.writer.add_scalars('Loss_Comparison', {
-                'Train': train_loss,
-                'Validation': val_loss
-            }, epoch)
-
-    def log_batch(self, epoch, batch_idx, loss, total_batches):
-        """Log batch-level metrics"""
-        if self.writer:
-            global_step = epoch * total_batches + batch_idx
-            self.writer.add_scalar('Batch_Loss/Train', loss, global_step)
-        self.metrics['batch_losses'].append(loss)
-
-    def log_model_weights(self, model, epoch):
-        """Log model weight distributions"""
-        if self.writer:
-            for name, param in model.named_parameters():
-                self.writer.add_histogram(f'Weights/{name}', param.data, epoch)
-                if param.grad is not None:
-                    self.writer.add_histogram(f'Gradients/{name}', param.grad, epoch)
-
-    def plot_training_curves(self, save_path=None):
-        """Create and save training curves"""
-        if len(self.metrics['epochs']) == 0:
-            return
-
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        fig.suptitle('Training Progress', fontsize=16)
-
-        # Plot 1: Loss curves
-        ax1 = axes[0, 0]
-        ax1.plot(self.metrics['epochs'], self.metrics['train_loss'],
-                 label='Train Loss', marker='o', markersize=3)
-        ax1.plot(self.metrics['epochs'], self.metrics['val_loss'],
-                 label='Validation Loss', marker='s', markersize=3)
-        ax1.set_xlabel('Epoch')
-        ax1.set_ylabel('RMSE Loss')
-        ax1.set_title('Training and Validation Loss')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-
-        # Plot 2: Learning rate
-        ax2 = axes[0, 1]
-        ax2.plot(self.metrics['epochs'], self.metrics['learning_rate'],
-                 color='green', marker='o', markersize=3)
-        ax2.set_xlabel('Epoch')
-        ax2.set_ylabel('Learning Rate')
-        ax2.set_title('Learning Rate Schedule')
-        ax2.set_yscale('log')
-        ax2.grid(True, alpha=0.3)
-
-        # Plot 3: Loss difference (overfitting indicator)
-        ax3 = axes[1, 0]
-        loss_diff = np.array(self.metrics['val_loss']) - np.array(self.metrics['train_loss'])
-        ax3.plot(self.metrics['epochs'], loss_diff,
-                 color='orange', marker='o', markersize=3)
-        ax3.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-        ax3.set_xlabel('Epoch')
-        ax3.set_ylabel('Val Loss - Train Loss')
-        ax3.set_title('Overfitting Indicator')
-        ax3.grid(True, alpha=0.3)
-
-        # Plot 4: Recent batch losses distribution (last epoch)
-        ax4 = axes[1, 1]
-        if len(self.metrics['batch_losses']) > 0:
-            recent_losses = self.metrics['batch_losses'][-100:]  # Last 100 batches
-            ax4.hist(recent_losses, bins=30, alpha=0.7, color='blue', edgecolor='black')
-            ax4.axvline(x=np.mean(recent_losses), color='red',
-                        linestyle='--', label=f'Mean: {np.mean(recent_losses):.4f}')
-            ax4.set_xlabel('Loss Value')
-            ax4.set_ylabel('Frequency')
-            ax4.set_title('Recent Batch Loss Distribution')
-            ax4.legend()
-
-        plt.tight_layout()
-
-        # Save figure
-        if save_path is None:
-            save_path = os.path.join(self.plots_dir, 'training_curves.png')
-        plt.savefig(save_path, dpi=100, bbox_inches='tight')
-        plt.close()
-
-        return save_path
-
-    def save_metrics(self):
-        """Save metrics to JSON file"""
-        metrics_file = os.path.join(self.save_dir, 'training_metrics.json')
-        # Convert to serializable format
-        save_metrics = {
-            'epochs': self.metrics['epochs'],
-            'train_loss': self.metrics['train_loss'],
-            'val_loss': self.metrics['val_loss'],
-            'learning_rate': self.metrics['learning_rate'],
-            'best_val_loss': min(self.metrics['val_loss']) if self.metrics['val_loss'] else None,
-            'best_epoch': self.metrics['epochs'][np.argmin(self.metrics['val_loss'])] if self.metrics[
-                'val_loss'] else None
-        }
-        with open(metrics_file, 'w') as f:
-            json.dump(save_metrics, f, indent=2)
-        print(f"Metrics saved to: {metrics_file}")
-
-    def close(self):
-        """Close tensorboard writer"""
-        if self.writer:
-            self.writer.close()
-
-
-def load_pretrained_model(model_path: str, device: torch.device, config, load_weights: bool = True) -> tuple:
-    """
-    Load TCN model with optional pretrained weights and sensor selection.
-
-    Args:
-        model_path: Path to the saved model file
-        device: Device to load the model on
-        config: Configuration object containing sensor_pick and label_names
-        load_weights: Whether to load pretrained weights
-
-    Returns:
-        Tuple of (model, model_info_dict)
-    """
-    model_info = torch.load(model_path, map_location=device)
-    state_dict = model_info.get("state_dict", None)
-
-    # Get TCN initialization parameters
-    tcn_signature = inspect.signature(TCN.__init__)
-    tcn_param_names = [param.name for param in tcn_signature.parameters.values()
-                       if param.name != 'self']
-
-    # Only pass parameters that TCN needs
-    tcn_params = {k: v for k, v in model_info.items()
-                  if k in tcn_param_names}
-
-    # Modify parameters based on sensor_pick configuration
-    if not load_weights:
-        # Update output size based on label_names
-        if hasattr(config, 'label_names'):
-            tcn_params['output_size'] = len(config.label_names)
-
-        # Update input size and normalization parameters based on sensor_pick
-        if hasattr(config, 'sensor_pick') and config.sensor_pick:
-            # Update input size to match number of selected sensors
-            tcn_params['input_size'] = len(config.sensor_pick)
-
-            # Update center array - always [1, features, 1] shape
-            if 'center' in tcn_params and tcn_params['center'] is not None:
-                # Select from features dimension (dim=1)
-                tcn_params['center'] = tcn_params['center'][:, config.sensor_pick, :]
-
-            # Update scale array - always [1, features, 1] shape
-            if 'scale' in tcn_params and tcn_params['scale'] is not None:
-                # Select from features dimension (dim=1)
-                tcn_params['scale'] = tcn_params['scale'][:, config.sensor_pick, :]
-
-        print(f"Modified model parameters for sensor selection:")
-        print(f"  - Input size: {tcn_params.get('input_size', 'N/A')}")
-        print(f"  - Output size: {tcn_params.get('output_size', 'N/A')}")
-        if hasattr(config, 'sensor_pick') and config.sensor_pick:
-            print(f"  - Selected sensors: {config.sensor_pick}")
-
-    # Create model
-    tcn = TCN(**tcn_params).to(device)
-
-    # Load pretrained weights if requested and available
-    if load_weights and state_dict is not None:
-        tcn.load_state_dict(state_dict)
-        print("Loaded pretrained weights successfully!")
-    else:
-        print("Using random initialization for model weights.")
-
-    # Prepare model info for saving (exclude state_dict and training info)
-    save_info = tcn_params
-
-    return tcn, save_info
 
 def train_epoch(
         model,
@@ -253,21 +21,21 @@ def train_epoch(
         criterion,
         optimizer,
         device,
-        model_delays,
+        config,
         epoch,
         total_epochs,
         visualizer=None,
         clip_grad_norm=1.0
 ):
-    """Train for one epoch"""
+    """Train for one epoch."""
     model.train()
     total_loss = 0
     num_batches = 0
     nan_count = 0
-    batch_losses = []
 
     pbar = tqdm(dataloader, desc=f'Epoch {epoch}/{total_epochs} [Train]')
     total_batches = len(dataloader)
+    computer = MetricsComputer()
 
     for batch_idx, (inputs, labels, seq_lengths) in enumerate(pbar):
         inputs, labels = inputs.to(device), labels.to(device)
@@ -280,17 +48,14 @@ def train_epoch(
         if torch.isnan(outputs).any():
             print(f"Warning: NaN detected in model output at batch {batch_idx}")
             nan_count += 1
-            for name, param in model.named_parameters():
-                if torch.isnan(param).any():
-                    print(f"  NaN found in parameter: {name}")
             continue
 
         # Process batch to handle padding and delays
-        processed_outputs, processed_labels = process_batch(
+        processed_outputs, processed_labels = computer.process_batch(
             outputs, labels,
             model.get_effective_history(),
             seq_lengths,
-            model_delays
+            config.model_delays
         )
 
         # Skip if no valid samples
@@ -308,16 +73,12 @@ def train_epoch(
 
         # Backward pass with gradient clipping
         loss.backward()
-
-        # Clip gradients to prevent explosion
         torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm)
-
         optimizer.step()
 
         # Update metrics
         loss_value = loss.item()
         total_loss += loss_value
-        batch_losses.append(loss_value)
         num_batches += 1
 
         # Log batch metrics
@@ -335,7 +96,7 @@ def train_epoch(
         print(f"Warning: {nan_count} batches with NaN encountered in epoch {epoch}")
 
     # Log model weights distribution
-    if visualizer and epoch % 5 == 0:  # Log every 5 epochs to save space
+    if visualizer and epoch % 5 == 0:
         visualizer.log_model_weights(model, epoch)
 
     return total_loss / num_batches if num_batches > 0 else 0
@@ -346,15 +107,16 @@ def validate_epoch(
         dataloader,
         criterion,
         device,
-        model_delays,
+        config,
         epoch,
         total_epochs
 ):
-    """Validate for one epoch"""
+    """Validate for one epoch."""
     model.eval()
     total_loss = 0
     num_batches = 0
     all_losses = []
+    computer = MetricsComputer()
 
     with torch.no_grad():
         pbar = tqdm(dataloader, desc=f'Epoch {epoch}/{total_epochs} [Valid]')
@@ -373,11 +135,11 @@ def validate_epoch(
                 continue
 
             # Process batch
-            processed_outputs, processed_labels = process_batch(
+            processed_outputs, processed_labels = computer.process_batch(
                 outputs, labels,
                 model.get_effective_history(),
                 seq_lengths,
-                model_delays
+                config.model_delays
             )
 
             # Skip if no valid samples
@@ -412,12 +174,7 @@ def validate_epoch(
 
 
 def create_argument_parser():
-    """
-    Create and configure argument parser for training.
-
-    Returns:
-        argparse.ArgumentParser: Configured argument parser
-    """
+    """Create and configure argument parser for training."""
     parser = argparse.ArgumentParser(description='Train TCN for joint moment estimation')
     parser.add_argument('--config_path', type=str, default='configs.default_config.py',
                         help='Path to config file')
@@ -446,120 +203,35 @@ def create_argument_parser():
     return parser
 
 
-def apply_sensor_selection(config):
-    """
-    Apply sensor_pick filtering to config if specified.
-
-    Args:
-        config: Configuration object
-
-    Returns:
-        config: Modified configuration object
-    """
-    if hasattr(config, 'sensor_pick') and config.sensor_pick:
-        # Filter input_names based on sensor_pick indices
-        if hasattr(config, 'input_names'):
-            original_input_names = config.input_names.copy()
-            filtered_input_names = [config.input_names[i] for i in config.sensor_pick
-                                    if i < len(config.input_names)]
-            config.input_names = filtered_input_names
-
-            print(f"Sensor selection applied:")
-            print(f"  - Original number of inputs: {len(original_input_names)}")
-            print(f"  - Selected sensor indices: {config.sensor_pick}")
-            print(f"  - Number of selected inputs: {len(config.input_names)}")
-            print(f"  - Selected input names: {config.input_names}")
-
-    return config
-
-
-def save_training_config(args, config, save_dir):
-    """
-    Save training arguments and configuration to a single JSON file.
-
-    Args:
-        args: Parsed command line arguments
-        config: Configuration object
-        save_dir: Directory to save the file
-
-    Returns:
-        str: Path to saved file
-    """
-    # Start with training arguments
-    save_data = vars(args).copy()
-
-    # Extract all config attributes
-    config_dict = {}
-    for attr_name in dir(config):
-        if not attr_name.startswith('__'):
-            attr_value = getattr(config, attr_name)
-            # Convert non-serializable types to serializable ones
-            if isinstance(attr_value, (list, tuple, str, int, float, bool, dict)):
-                config_dict[attr_name] = attr_value
-            elif attr_value is None:
-                config_dict[attr_name] = None
-            else:
-                # Try to convert to string for other types
-                try:
-                    config_dict[attr_name] = str(attr_value)
-                except:
-                    pass
-
-    # Add config to save_data
-    save_data['config'] = config_dict
-
-    # Save combined data to single JSON file
-    args_file = os.path.join(save_dir, 'training_args.json')
-    with open(args_file, 'w') as f:
-        json.dump(save_data, f, indent=2)
-
-    print(f"Training arguments and configuration saved to: {args_file}")
-    return args_file
-
-
-def setup_training_directory(base_dir='checkpoints'):
-    """
-    Create training directory with timestamp.
-
-    Args:
-        base_dir: Base directory for checkpoints
-
-    Returns:
-        str: Path to created directory
-    """
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    save_dir = os.path.join(base_dir, f'train_{timestamp}')
-    os.makedirs(save_dir, exist_ok=True)
-    print(f"Created training directory: {save_dir}")
-    return save_dir
-
-
 def main():
     # Parse arguments
     parser = create_argument_parser()
     args = parser.parse_args()
 
-    # Setup
+    # Setup device
     device = torch.device(args.device)
+    print(f"Using device: {device}")
 
     # Load and process config
-    config = load_config(args.config_path)
-    config = apply_sensor_selection(config)
+    config_manager = ConfigManager()
+    config = config_manager.load_config(args.config_path)
+    config = config_manager.apply_sensor_selection(config)
 
     # Setup training directory
-    save_dir = setup_training_directory(args.save_dir)
+    save_dir = config_manager.setup_training_directory(args.save_dir)
 
     # Initialize visualizer
     visualizer = TrainingVisualizer(save_dir, use_tensorboard=args.use_tensorboard)
 
     # Save configuration
-    save_training_config(args, config, save_dir)
+    config_manager.save_training_config(args, config, save_dir)
 
     # Load model
     print(f"\nLoading model from {config.model_path}")
     print(f"Using pretrained weights: {args.use_pretrained}")
 
-    model, model_info = load_pretrained_model(
+    model_loader = ModelLoader()
+    model, model_info = model_loader.load_pretrained_model(
         config.model_path,
         device,
         config,
@@ -569,79 +241,21 @@ def main():
     print("\nModel loaded successfully!")
     print(f"Model architecture: {model}")
 
-    # Verify model weights are not NaN
-    for name, param in model.named_parameters():
-        if torch.isnan(param).any():
-            print(f"ERROR: NaN found in initial parameter: {name}")
-            print("Please check the pretrained model file!")
-            return
-
     # Prepare data
-    input_names = [name.replace("*", config.side) for name in config.input_names]
-    label_names = [name.replace("*", config.side) for name in config.label_names]
-
-    print("Loading dataset...")
-    # 创建一个列表来存储所有数据集
-    datasets = []
-
-    # 循环读取每个路径的数据
-    for data_dir in config.data_dirs:
-        print(f"Loading data from: {data_dir}")
-        dataset = TcnDataset(
-            data_dir=data_dir,
-            input_names=input_names,
-            label_names=label_names,
-            side=config.side,
-            participant_masses=config.participant_masses,
-            device=device
-        )
-        datasets.append(dataset)
-        print(f"  - Loaded {len(dataset)} trials")
-
-    # 合并所有数据集
-    full_dataset = ConcatDataset(datasets)
-    print(f"Total dataset size: {len(full_dataset)} trials")
-
-    # 获取或计算valid indices（会自动使用缓存）
-    valid_indices = get_or_compute_valid_indices(full_dataset, config)
-
-    print(
-        f"Valid trials: {len(valid_indices)}/{len(full_dataset)} ({100 * len(valid_indices) / len(full_dataset):.1f}%)")
-
-    # 使用Subset只包含有效试验
-    from torch.utils.data import Subset
-    filtered_dataset = Subset(full_dataset, valid_indices)
-
-    # 然后对filtered_dataset进行train/val split
-    val_size = int(len(filtered_dataset) * args.val_split)
-    train_size = len(filtered_dataset) - val_size
-    train_dataset, val_dataset = random_split(filtered_dataset, [train_size, val_size])
-
-    print(f"Dataset split: {train_size} train, {val_size} validation")
-
-    # Create dataloaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        collate_fn=lambda x: collate_function(x, device)
+    data_manager = DataManager()
+    full_dataset = data_manager.load_datasets(config, device)
+    train_dataset, val_dataset = data_manager.create_train_val_split(
+        full_dataset, config, args.val_split
+    )
+    train_loader, val_loader = data_manager.create_dataloaders(
+        train_dataset, val_dataset, args.batch_size, device
     )
 
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        collate_fn=lambda x: collate_function(x, device)
-    )
-
-    # Initialize optimizer and loss
+    # Initialize optimizer, scheduler, and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-
-    # Learning rate scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=5, verbose=True
     )
-
     criterion = RMSELoss()
 
     # Training loop
@@ -656,7 +270,7 @@ def main():
             # Train
             train_loss = train_epoch(
                 model, train_loader, criterion, optimizer,
-                device, config.model_delays, epoch, args.epochs,
+                device, config, epoch, args.epochs,
                 visualizer=visualizer,
                 clip_grad_norm=args.clip_grad
             )
@@ -664,7 +278,7 @@ def main():
             # Validate
             val_loss = validate_epoch(
                 model, val_loader, criterion,
-                device, config.model_delays, epoch, args.epochs
+                device, config, epoch, args.epochs
             )
 
             # Get current learning rate
@@ -689,14 +303,18 @@ def main():
             # Save best model
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                save_path = os.path.join(save_dir, 'best_model.tar')
-                save_checkpoint(model, optimizer, epoch, val_loss, save_path, model_info)
+                save_path = save_dir + '/best_model.tar'
+                model_loader.save_checkpoint(
+                    model, optimizer, epoch, val_loss, save_path, model_info
+                )
                 print(f"  ✓ New best model saved (Val Loss: {val_loss:.4f})")
 
             # Save periodic checkpoint
             if epoch % args.save_interval == 0:
-                save_path = os.path.join(save_dir, f'checkpoint_epoch_{epoch}.tar')
-                save_checkpoint(model, optimizer, epoch, val_loss, save_path, model_info)
+                save_path = save_dir + f'/checkpoint_epoch_{epoch}.tar'
+                model_loader.save_checkpoint(
+                    model, optimizer, epoch, val_loss, save_path, model_info
+                )
                 print(f"  Checkpoint saved: {save_path}")
 
             print("-" * 50)
@@ -706,8 +324,10 @@ def main():
 
     finally:
         # Save final model
-        save_path = os.path.join(save_dir, 'final_model.tar')
-        save_checkpoint(model, optimizer, epoch, val_loss, save_path, model_info)
+        save_path = save_dir + '/final_model.tar'
+        model_loader.save_checkpoint(
+            model, optimizer, epoch, val_loss, save_path, model_info
+        )
         print(f"\nFinal model saved to {save_path}")
 
         # Generate final plots
