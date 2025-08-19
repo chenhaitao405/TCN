@@ -5,8 +5,8 @@ model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
 data_dirs = [
-    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-     # "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/test",
+	#  "/home/num2/datasets/EXO/Phase3_Parsed/test"
 ]
 
 # corresponding leg (model is not dependent on side)
@@ -27,6 +27,7 @@ sensor_pick = [12,13,14,15,16,17,21,22,]
 
 # corresponding model label names in dataset
 label_names = ["hip_flexion_*_moment"]
+
 
 # intentional model delay (in data points)
 model_delays = [10, 0] # hip moment estimates are delayed by 50 ms

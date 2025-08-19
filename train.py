@@ -180,13 +180,14 @@ class TrainingVisualizer:
             self.writer.close()
 
 
-def load_pretrained_model(model_path: str, device: torch.device, load_weights: bool = True) -> tuple:
+def load_pretrained_model(model_path: str, device: torch.device, config, load_weights: bool = True) -> tuple:
     """
-    Load TCN model with optional pretrained weights.
+    Load TCN model with optional pretrained weights and sensor selection.
 
     Args:
         model_path: Path to the saved model file
         device: Device to load the model on
+        config: Configuration object containing sensor_pick and label_names
         load_weights: Whether to load pretrained weights
 
     Returns:
@@ -204,7 +205,32 @@ def load_pretrained_model(model_path: str, device: torch.device, load_weights: b
     tcn_params = {k: v for k, v in model_info.items()
                   if k in tcn_param_names}
 
-    #修改为根据config构建模型
+    # Modify parameters based on sensor_pick configuration
+    if not load_weights:
+        # Update output size based on label_names
+        if hasattr(config, 'label_names'):
+            tcn_params['output_size'] = len(config.label_names)
+
+        # Update input size and normalization parameters based on sensor_pick
+        if hasattr(config, 'sensor_pick') and config.sensor_pick:
+            # Update input size to match number of selected sensors
+            tcn_params['input_size'] = len(config.sensor_pick)
+
+            # Update center array - always [1, features, 1] shape
+            if 'center' in tcn_params and tcn_params['center'] is not None:
+                # Select from features dimension (dim=1)
+                tcn_params['center'] = tcn_params['center'][:, config.sensor_pick, :]
+
+            # Update scale array - always [1, features, 1] shape
+            if 'scale' in tcn_params and tcn_params['scale'] is not None:
+                # Select from features dimension (dim=1)
+                tcn_params['scale'] = tcn_params['scale'][:, config.sensor_pick, :]
+
+        print(f"Modified model parameters for sensor selection:")
+        print(f"  - Input size: {tcn_params.get('input_size', 'N/A')}")
+        print(f"  - Output size: {tcn_params.get('output_size', 'N/A')}")
+        if hasattr(config, 'sensor_pick') and config.sensor_pick:
+            print(f"  - Selected sensors: {config.sensor_pick}")
 
     # Create model
     tcn = TCN(**tcn_params).to(device)
@@ -217,11 +243,9 @@ def load_pretrained_model(model_path: str, device: torch.device, load_weights: b
         print("Using random initialization for model weights.")
 
     # Prepare model info for saving (exclude state_dict and training info)
-    save_info = {k: v for k, v in model_info.items()
-                 if k not in ["state_dict", "optimizer_state_dict", "epoch", "loss"]}
+    save_info = tcn_params
 
     return tcn, save_info
-
 
 def train_epoch(
         model,
@@ -387,8 +411,13 @@ def validate_epoch(
     return avg_loss
 
 
-def main():
-    # Parse arguments
+def create_argument_parser():
+    """
+    Create and configure argument parser for training.
+
+    Returns:
+        argparse.ArgumentParser: Configured argument parser
+    """
     parser = argparse.ArgumentParser(description='Train TCN for joint moment estimation')
     parser.add_argument('--config_path', type=str, default='configs.default_config.py',
                         help='Path to config file')
@@ -407,41 +436,138 @@ def main():
     parser.add_argument('--save_interval', type=int, default=10,
                         help='Save checkpoint every N epochs')
     parser.add_argument('--use_pretrained', action='store_true', default=False,
-                        help='Whether to use pretrained weights (default: True)')
+                        help='Whether to use pretrained weights (default: False)')
     parser.add_argument('--clip_grad', type=float, default=1.0,
                         help='Gradient clipping value')
     parser.add_argument('--use_tensorboard', action='store_true', default=True,
                         help='Use tensorboard for visualization')
     parser.add_argument('--plot_interval', type=int, default=5,
                         help='Update plots every N epochs')
+    return parser
+
+
+def apply_sensor_selection(config):
+    """
+    Apply sensor_pick filtering to config if specified.
+
+    Args:
+        config: Configuration object
+
+    Returns:
+        config: Modified configuration object
+    """
+    if hasattr(config, 'sensor_pick') and config.sensor_pick:
+        # Filter input_names based on sensor_pick indices
+        if hasattr(config, 'input_names'):
+            original_input_names = config.input_names.copy()
+            filtered_input_names = [config.input_names[i] for i in config.sensor_pick
+                                    if i < len(config.input_names)]
+            config.input_names = filtered_input_names
+
+            print(f"Sensor selection applied:")
+            print(f"  - Original number of inputs: {len(original_input_names)}")
+            print(f"  - Selected sensor indices: {config.sensor_pick}")
+            print(f"  - Number of selected inputs: {len(config.input_names)}")
+            print(f"  - Selected input names: {config.input_names}")
+
+    return config
+
+
+def save_training_config(args, config, save_dir):
+    """
+    Save training arguments and configuration to a single JSON file.
+
+    Args:
+        args: Parsed command line arguments
+        config: Configuration object
+        save_dir: Directory to save the file
+
+    Returns:
+        str: Path to saved file
+    """
+    # Start with training arguments
+    save_data = vars(args).copy()
+
+    # Extract all config attributes
+    config_dict = {}
+    for attr_name in dir(config):
+        if not attr_name.startswith('__'):
+            attr_value = getattr(config, attr_name)
+            # Convert non-serializable types to serializable ones
+            if isinstance(attr_value, (list, tuple, str, int, float, bool, dict)):
+                config_dict[attr_name] = attr_value
+            elif attr_value is None:
+                config_dict[attr_name] = None
+            else:
+                # Try to convert to string for other types
+                try:
+                    config_dict[attr_name] = str(attr_value)
+                except:
+                    pass
+
+    # Add config to save_data
+    save_data['config'] = config_dict
+
+    # Save combined data to single JSON file
+    args_file = os.path.join(save_dir, 'training_args.json')
+    with open(args_file, 'w') as f:
+        json.dump(save_data, f, indent=2)
+
+    print(f"Training arguments and configuration saved to: {args_file}")
+    return args_file
+
+
+def setup_training_directory(base_dir='checkpoints'):
+    """
+    Create training directory with timestamp.
+
+    Args:
+        base_dir: Base directory for checkpoints
+
+    Returns:
+        str: Path to created directory
+    """
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    save_dir = os.path.join(base_dir, f'train_{timestamp}')
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Created training directory: {save_dir}")
+    return save_dir
+
+
+def main():
+    # Parse arguments
+    parser = create_argument_parser()
     args = parser.parse_args()
 
-    # Load config
-    config = load_config(args.config_path)
+    # Setup
     device = torch.device(args.device)
 
-    # Create save directory with timestamp
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    save_dir = os.path.join(args.save_dir, f'train_{timestamp}')
-    os.makedirs(save_dir, exist_ok=True)
+    # Load and process config
+    config = load_config(args.config_path)
+    config = apply_sensor_selection(config)
+
+    # Setup training directory
+    save_dir = setup_training_directory(args.save_dir)
 
     # Initialize visualizer
     visualizer = TrainingVisualizer(save_dir, use_tensorboard=args.use_tensorboard)
 
-    # Save training arguments
-    args_file = os.path.join(save_dir, 'training_args.json')
-    with open(args_file, 'w') as f:
-        json.dump(vars(args), f, indent=2)
-    print(f"Training arguments saved to: {args_file}")
+    # Save configuration
+    save_training_config(args, config, save_dir)
 
-    # Load model with pretrained weights
-    print(f"Loading model from {config.model_path}")
+    # Load model
+    print(f"\nLoading model from {config.model_path}")
     print(f"Using pretrained weights: {args.use_pretrained}")
+
     model, model_info = load_pretrained_model(
         config.model_path,
         device,
+        config,
         load_weights=args.use_pretrained
     )
+
+    print("\nModel loaded successfully!")
+    print(f"Model architecture: {model}")
 
     # Verify model weights are not NaN
     for name, param in model.named_parameters():
