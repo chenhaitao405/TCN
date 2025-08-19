@@ -1,12 +1,10 @@
-"""
-Refactored validation script for TCN model.
-"""
 import argparse
 import torch
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 import numpy as np
 import json
+import os
 from datetime import datetime
 
 # Import custom modules
@@ -124,7 +122,7 @@ def save_validation_results(metrics, save_dir, config_path, model_path):
         results['per_label_metrics'][name] = summary[name]
 
     # Save to JSON
-    results_file = save_dir + '/validation_results.json'
+    results_file = os.path.join(save_dir, 'validation_results.json')
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
 
@@ -185,6 +183,35 @@ def create_argument_parser():
     return parser
 
 
+def setup_validation_directory_with_model_name(base_dir, model_path):
+    """
+    Create validation directory with model path name and timestamp.
+
+    Args:
+        base_dir: Base directory (e.g., 'validation_results')
+        model_path: Model path from config (e.g., 'allsensor')
+
+    Returns:
+        Full path to the created directory
+    """
+    # Extract model name from path (remove directory and extension if present)
+    model_name = os.path.splitext(os.path.basename(model_path))[0]
+
+    # Create timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    # Create directory name with format: val_modelname_timestamp
+    dir_name = f'val_{model_name}_{timestamp}'
+
+    # Create full path
+    full_path = os.path.join(base_dir, dir_name)
+
+    # Create directory
+    os.makedirs(full_path, exist_ok=True)
+
+    return full_path
+
+
 def main():
     # Parse arguments
     parser = create_argument_parser()
@@ -199,8 +226,9 @@ def main():
     config = config_manager.load_config(args.config_path)
     config = config_manager.apply_sensor_selection(config)
 
-    # Setup save directory
-    save_dir = config_manager.setup_validation_directory(args.save_dir)
+    # Setup save directory with model name
+    save_dir = setup_validation_directory_with_model_name(args.save_dir, config.task_name)
+    print(f"Created validation directory: {save_dir}")
 
     # Load model
     print(f"\nLoading model from: {args.model_path}")

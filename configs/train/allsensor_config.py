@@ -1,6 +1,6 @@
 import os
 
-model_name = "allsensor"
+model_name = "allsensor_p1p2"
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 

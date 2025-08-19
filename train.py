@@ -1,11 +1,10 @@
-"""
-Refactored training script for TCN model.
-"""
 import argparse
 import torch
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
+import os
+from datetime import datetime
 
 # Import custom modules
 from utils.config_utils import ConfigManager
@@ -203,6 +202,35 @@ def create_argument_parser():
     return parser
 
 
+def setup_training_directory_with_model_name(base_dir, model_path):
+    """
+    Create training directory with model path name and timestamp.
+    
+    Args:
+        base_dir: Base directory (e.g., 'checkpoints')
+        model_path: Model path from config (e.g., 'allsensor')
+    
+    Returns:
+        Full path to the created directory
+    """
+    # Extract model name from path (remove directory and extension if present)
+    model_name = os.path.splitext(os.path.basename(model_path))[0]
+    
+    # Create timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # Create directory name with format: train_modelname_timestamp
+    dir_name = f'train_{model_name}_{timestamp}'
+    
+    # Create full path
+    full_path = os.path.join(base_dir, dir_name)
+    
+    # Create directory
+    os.makedirs(full_path, exist_ok=True)
+    
+    return full_path
+
+
 def main():
     # Parse arguments
     parser = create_argument_parser()
@@ -217,8 +245,9 @@ def main():
     config = config_manager.load_config(args.config_path)
     config = config_manager.apply_sensor_selection(config)
 
-    # Setup training directory
-    save_dir = config_manager.setup_training_directory(args.save_dir)
+    # Setup training directory with model name
+    save_dir = setup_training_directory_with_model_name(args.save_dir, config.task_name)
+    print(f"Created training directory: {save_dir}")
 
     # Initialize visualizer
     visualizer = TrainingVisualizer(save_dir, use_tensorboard=args.use_tensorboard)
@@ -303,7 +332,7 @@ def main():
             # Save best model
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                save_path = save_dir + '/best_model.tar'
+                save_path = os.path.join(save_dir, 'best_model.tar')
                 model_loader.save_checkpoint(
                     model, optimizer, epoch, val_loss, save_path, model_info
                 )
@@ -311,7 +340,7 @@ def main():
 
             # Save periodic checkpoint
             if epoch % args.save_interval == 0:
-                save_path = save_dir + f'/checkpoint_epoch_{epoch}.tar'
+                save_path = os.path.join(save_dir, f'checkpoint_epoch_{epoch}.tar')
                 model_loader.save_checkpoint(
                     model, optimizer, epoch, val_loss, save_path, model_info
                 )
@@ -324,7 +353,7 @@ def main():
 
     finally:
         # Save final model
-        save_path = save_dir + '/final_model.tar'
+        save_path = os.path.join(save_dir, 'final_model.tar')
         model_loader.save_checkpoint(
             model, optimizer, epoch, val_loss, save_path, model_info
         )
