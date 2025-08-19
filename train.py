@@ -10,6 +10,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import ConcatDataset
 
 from config_utils import load_config
 from dataloader import TcnDataset
@@ -202,6 +203,8 @@ def load_pretrained_model(model_path: str, device: torch.device, load_weights: b
     # Only pass parameters that TCN needs
     tcn_params = {k: v for k, v in model_info.items()
                   if k in tcn_param_names}
+
+    #修改为根据config构建模型
 
     # Create model
     tcn = TCN(**tcn_params).to(device)
@@ -452,14 +455,26 @@ def main():
     label_names = [name.replace("*", config.side) for name in config.label_names]
 
     print("Loading dataset...")
-    full_dataset = TcnDataset(
-        data_dir=config.data_dir,
-        input_names=input_names,
-        label_names=label_names,
-        side=config.side,
-        participant_masses=config.participant_masses,
-        device=device
-    )
+    # 创建一个列表来存储所有数据集
+    datasets = []
+
+    # 循环读取每个路径的数据
+    for data_dir in config.data_dirs:
+        print(f"Loading data from: {data_dir}")
+        dataset = TcnDataset(
+            data_dir=data_dir,
+            input_names=input_names,
+            label_names=label_names,
+            side=config.side,
+            participant_masses=config.participant_masses,
+            device=device
+        )
+        datasets.append(dataset)
+        print(f"  - Loaded {len(dataset)} trials")
+
+    # 合并所有数据集
+    full_dataset = ConcatDataset(datasets)
+    print(f"Total dataset size: {len(full_dataset)} trials")
 
     # Split dataset
     ## 过滤含nan的数据

@@ -5,7 +5,7 @@ model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
 data_dirs = [
-    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/test",
     # "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
 ]
 
@@ -13,18 +13,20 @@ data_dirs = [
 side = "r"
 
 # corresponding model input names in dataset (* is substituted with side)
-input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z", 
-				"foot_imu_*_accel_x", "foot_imu_*_accel_y", "foot_imu_*_accel_z", 
-				"shank_imu_*_gyro_x", "shank_imu_*_gyro_y", "shank_imu_*_gyro_z", 
-				"shank_imu_*_accel_x", "shank_imu_*_accel_y", "shank_imu_*_accel_z", 
-				"thigh_imu_*_gyro_x", "thigh_imu_*_gyro_y", "thigh_imu_*_gyro_z", 
+input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",
+				"foot_imu_*_accel_x", "foot_imu_*_accel_y", "foot_imu_*_accel_z",
+				"shank_imu_*_gyro_x", "shank_imu_*_gyro_y", "shank_imu_*_gyro_z",
+				"shank_imu_*_accel_x", "shank_imu_*_accel_y", "shank_imu_*_accel_z",
+				"thigh_imu_*_gyro_x", "thigh_imu_*_gyro_y", "thigh_imu_*_gyro_z",
 				"thigh_imu_*_accel_x", "thigh_imu_*_accel_y", "thigh_imu_*_accel_z",
 				"insole_*_cop_x", "insole_*_cop_z", "insole_*_force_y",
-				"hip_angle_*", "hip_angle_*_velocity_filt", 
+				"hip_angle_*", "hip_angle_*_velocity_filt",
 				"knee_angle_*", "knee_angle_*_velocity_filt"]
 
+sensor_pick = []
+
 # corresponding model label names in dataset
-label_names = ["hip_flexion_*_moment", "knee_angle_*_moment"]
+label_names = ["hip_flexion_*_moment"]
 
 # intentional model delay (in data points)
 model_delays = [10, 0] # hip moment estimates are delayed by 50 ms
