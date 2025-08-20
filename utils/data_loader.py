@@ -31,6 +31,12 @@ class DataManager:
             ConcatDataset containing all loaded data
         """
         print("Loading dataset...")
+
+        # 获取动作筛选模式
+        action_patterns = getattr(config, 'action_patterns', None)
+        if action_patterns:
+            print(f"Filtering actions with patterns: {action_patterns}")
+
         datasets = []
         sides = config.side if isinstance(config.side, list) else [config.side]
         for data_dir in config.data_dirs:
@@ -39,16 +45,16 @@ class DataManager:
                     data_dir=data_dir,
                     input_names=[name.replace("*", side) for name in config.input_names],
                     label_names=[name.replace("*", side) for name in config.label_names],
-                    side=side,  # 单个 side
+                    side=side,
                     participant_masses=config.participant_masses,
+                    action_patterns=action_patterns,  # 传递动作筛选模式
                     device=device
                 )
                 datasets.append(dataset)
-                print(f"  - Loaded {len(dataset)} trials")
+                print(f"  - Loaded {len(dataset)} trials from {data_dir} (side: {side})")
 
         full_dataset = ConcatDataset(datasets)
         print(f"Total dataset size: {len(full_dataset)} trials")
-
 
         return full_dataset
 
@@ -80,7 +86,13 @@ class DataManager:
         else:
             side_str = config.side
 
-        cache_key = str(config.data_dirs) + str(config.input_names) + side_str
+        # 包含action_patterns在缓存key中
+        action_str = ""
+        if hasattr(config, 'action_patterns') and config.action_patterns:
+            # 使用action_patterns的哈希值作为key的一部分
+            action_str = hashlib.md5(str(config.action_patterns).encode()).hexdigest()[:8]
+
+        cache_key = str(config.data_dirs) + str(config.input_names) + side_str + action_str
         cache_hash = hashlib.md5(cache_key.encode()).hexdigest()[:8]
         cache_path = os.path.join(cache_dir, f'valid_indices_{cache_hash}.json')
 
@@ -91,7 +103,8 @@ class DataManager:
                     cache_data = json.load(f)
                 # 验证缓存是否仍然有效
                 if (cache_data['total_trials'] == len(full_dataset) and
-                        cache_data.get('side') == (side_str if isinstance(config.side, list) else config.side)):
+                        cache_data.get('side') == (side_str if isinstance(config.side, list) else config.side) and
+                        cache_data.get('action_patterns_hash', '') == action_str):
                     print(f"Loaded cached valid indices: {len(cache_data['valid_indices'])} valid trials")
                     return cache_data['valid_indices']
             except:
@@ -124,6 +137,7 @@ class DataManager:
             'valid_indices': valid_indices,
             'total_trials': len(full_dataset),
             'side': side_str if isinstance(config.side, list) else config.side,
+            'action_patterns_hash': action_str,
             'creation_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
         with open(cache_path, 'w') as f:
@@ -131,6 +145,7 @@ class DataManager:
         print(f"Saved cache to: {cache_path}")
 
         return valid_indices
+
     @staticmethod
     def create_train_val_split(
         full_dataset: ConcatDataset,

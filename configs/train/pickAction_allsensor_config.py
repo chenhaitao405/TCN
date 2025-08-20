@@ -1,42 +1,48 @@
 import os
 
-task_name = "pickAction_allsensor_p1p2"  #sensor_trainData_valData
-# relative file path to trained model
+task_name = "pickAction_kneeOnly_p1p2"
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
 data_dirs = [
-    "/home/num2/datasets/EXO/Phase1And2_Parsed/test",
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
     # "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
 ]
 
+# 使用正则表达式筛选动作
+# None 或空列表表示使用所有动作
+action_patterns = [
+    r"^normal_walk_\d+_.*",      # 所有normal_walk
+    r"^incline_walk_.*",          # 所有incline_walk
+    r"^stairs_.*",                # 所有stairs
+    r"^jump_\d+_.*",              # 所有jump
+    # r"^dynamic_walk_.*high-knees.*",  # 只要high-knees的dynamic_walk
+    # r".*_on$",                    # 只要所有以_on结尾的（外骨骼开启）
+]
+# action_patterns = None  # 不筛选，使用所有动作
+
 # corresponding leg (model is not dependent on side)
 side = ["r","l"]
+
 # corresponding model input(sensor) names in dataset (* is substituted with side)
-input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z", 
-				"foot_imu_*_accel_x", "foot_imu_*_accel_y", "foot_imu_*_accel_z", 
-				"shank_imu_*_gyro_x", "shank_imu_*_gyro_y", "shank_imu_*_gyro_z", 
-				"shank_imu_*_accel_x", "shank_imu_*_accel_y", "shank_imu_*_accel_z", 
-				"thigh_imu_*_gyro_x", "thigh_imu_*_gyro_y", "thigh_imu_*_gyro_z", 
+input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",
+				"foot_imu_*_accel_x", "foot_imu_*_accel_y", "foot_imu_*_accel_z",
+				"shank_imu_*_gyro_x", "shank_imu_*_gyro_y", "shank_imu_*_gyro_z",
+				"shank_imu_*_accel_x", "shank_imu_*_accel_y", "shank_imu_*_accel_z",
+				"thigh_imu_*_gyro_x", "thigh_imu_*_gyro_y", "thigh_imu_*_gyro_z",
 				"thigh_imu_*_accel_x", "thigh_imu_*_accel_y", "thigh_imu_*_accel_z",
 				"insole_*_cop_x", "insole_*_cop_z", "insole_*_force_y",
-				"hip_angle_*", "hip_angle_*_velocity_filt", 
+				"hip_angle_*", "hip_angle_*_velocity_filt",
 				"knee_angle_*", "knee_angle_*_velocity_filt"]
 
-# corresponding model label names in dataset
-sensor_pick = [12,13,14,15,16,17,21,22,]
+sensor_pick = [6,7,8,9,10,11,23,24,]
 
-
-#TODO： action_names=
-#TODO: action_pick =
-
-label_names = ["hip_flexion_*_moment", "knee_angle_*_moment"]
+label_names = ["knee_angle_*_moment"]
 
 # intentional model delay (in data points)
-model_delays = [10, 0] # hip moment estimates are delayed by 50 ms
+model_delays = [10, 0]
 
-# participant masses for normalizing insole forces.
-# - NOTE: This is a simplification. Detailed participant masses are provided in the readme of the corresponding dataset.
+# participant masses for normalizing insole forces
 participant_masses = {
 	"BT01": 80.59,
 	"BT02": 72.24,
@@ -62,4 +68,3 @@ participant_masses = {
 	"BT23": 67.23,
 	"BT24": 77.79
 }
-

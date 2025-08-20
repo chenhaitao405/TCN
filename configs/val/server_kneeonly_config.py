@@ -1,6 +1,6 @@
 import os
 
-task_name = "kneeOnly_p1p2_p3"  #sensor_trainData_valData
+task_name = "sit_to_stand_kneeOnly_p1p2_p3"  #sensor_trainData_valData
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
@@ -10,6 +10,15 @@ data_dirs = [
     #  "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
 ]
 
+action_patterns = [
+    # r"^normal_walk_\d+_.*",      # 所有normal_walk
+    # r"^incline_walk_.*",          # 所有incline_walk
+    # r"^stairs_.*",                # 所有stairs
+    # r"^jump_\d+_.*",              # 所有jump
+	# r"^sit_to_stand_.*",  # 所有坐站动作
+    # r"^dynamic_walk_.*high-knees.*",  # 只要high-knees的dynamic_walk
+    # r".*_on$",                    # 只要所有以_on结尾的（外骨骼开启）
+]
 # corresponding leg (model is not dependent on side)
 side = "r"
 
