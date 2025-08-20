@@ -1,5 +1,6 @@
 import os
 
+task_name = "hipOnly_p1p2_p3"  #sensor_trainData_valData
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 

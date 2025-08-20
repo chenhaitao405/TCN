@@ -30,41 +30,37 @@ class DataManager:
         Returns:
             ConcatDataset containing all loaded data
         """
-        # Prepare names
-        input_names = [name.replace("*", config.side) for name in config.input_names]
-        label_names = [name.replace("*", config.side) for name in config.label_names]
-
         print("Loading dataset...")
         datasets = []
-
-        # Load data from each directory
+        sides = config.side if isinstance(config.side, list) else [config.side]
         for data_dir in config.data_dirs:
-            print(f"Loading data from: {data_dir}")
-            dataset = TcnDataset(
-                data_dir=data_dir,
-                input_names=input_names,
-                label_names=label_names,
-                side=config.side,
-                participant_masses=config.participant_masses,
-                device=device
-            )
-            datasets.append(dataset)
-            print(f"  - Loaded {len(dataset)} trials")
+            for side in sides:
+                dataset = TcnDataset(
+                    data_dir=data_dir,
+                    input_names=[name.replace("*", side) for name in config.input_names],
+                    label_names=[name.replace("*", side) for name in config.label_names],
+                    side=side,  # 单个 side
+                    participant_masses=config.participant_masses,
+                    device=device
+                )
+                datasets.append(dataset)
+                print(f"  - Loaded {len(dataset)} trials")
 
-        # Combine all datasets
         full_dataset = ConcatDataset(datasets)
         print(f"Total dataset size: {len(full_dataset)} trials")
+
 
         return full_dataset
 
     @staticmethod
     def get_or_compute_valid_indices(
-        full_dataset: ConcatDataset,
-        config: Any,
-        cache_dir: str = 'cache'
+            full_dataset: ConcatDataset,
+            config: Any,
+            cache_dir: str = 'cache'
     ) -> List[int]:
         """
         Get or compute valid indices (non-NaN samples) with caching.
+        支持config.side为字符串或列表。
 
         Args:
             full_dataset: Full dataset to filter
@@ -78,7 +74,13 @@ class DataManager:
         os.makedirs(cache_dir, exist_ok=True)
 
         # Generate cache filename
-        cache_key = str(config.data_dirs) + str(config.input_names) + str(config.side)
+        # 处理side可能是列表的情况
+        if isinstance(config.side, list):
+            side_str = '_'.join(sorted(config.side))  # 排序确保一致性
+        else:
+            side_str = config.side
+
+        cache_key = str(config.data_dirs) + str(config.input_names) + side_str
         cache_hash = hashlib.md5(cache_key.encode()).hexdigest()[:8]
         cache_path = os.path.join(cache_dir, f'valid_indices_{cache_hash}.json')
 
@@ -87,7 +89,9 @@ class DataManager:
             try:
                 with open(cache_path, 'r') as f:
                     cache_data = json.load(f)
-                if cache_data['total_trials'] == len(full_dataset):
+                # 验证缓存是否仍然有效
+                if (cache_data['total_trials'] == len(full_dataset) and
+                        cache_data.get('side') == (side_str if isinstance(config.side, list) else config.side)):
                     print(f"Loaded cached valid indices: {len(cache_data['valid_indices'])} valid trials")
                     return cache_data['valid_indices']
             except:
@@ -96,6 +100,12 @@ class DataManager:
         # Compute valid indices
         print("Filtering trials with NaN...")
         valid_indices = []
+
+        # 如果使用方案B，需要知道每个side的数据集大小
+        if isinstance(config.side, list):
+            num_sides = len(config.side)
+            print(f"Checking trials for {num_sides} sides...")
+
         for i in tqdm(range(len(full_dataset)), desc="Checking trials"):
             inputs, labels, seq_lengths = full_dataset[i]
             if not torch.isnan(inputs).any() and not torch.isnan(labels).any():
@@ -104,10 +114,16 @@ class DataManager:
         print(f"Valid trials: {len(valid_indices)}/{len(full_dataset)} "
               f"({100 * len(valid_indices) / len(full_dataset):.1f}%)")
 
-        # Save cache
+        # 如果是多个side，显示更详细的信息
+        if isinstance(config.side, list):
+            trials_per_side = len(valid_indices) // len(config.side)
+            print(f"  Per side: approximately {trials_per_side} trials")
+
+        # Save cache with additional metadata
         cache_data = {
             'valid_indices': valid_indices,
             'total_trials': len(full_dataset),
+            'side': side_str if isinstance(config.side, list) else config.side,
             'creation_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
         with open(cache_path, 'w') as f:
@@ -115,7 +131,6 @@ class DataManager:
         print(f"Saved cache to: {cache_path}")
 
         return valid_indices
-
     @staticmethod
     def create_train_val_split(
         full_dataset: ConcatDataset,

@@ -239,7 +239,10 @@ def main():
     print("Model loaded successfully!")
 
     # Prepare label names
-    label_names = [name.replace("*", config.side) for name in config.label_names]
+    sides = config.side if isinstance(config.side, list) else [config.side]
+    for side in sides:
+        label_names = [name.replace("*", side) for name in config.label_names]
+
     print(f"\nValidating on labels: {label_names}")
 
     # Load dataset

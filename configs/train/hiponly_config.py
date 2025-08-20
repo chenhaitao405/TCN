@@ -1,5 +1,6 @@
 import os
 
+task_name = "hiponly_p1p2"  #sensor_trainData_valData
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
@@ -22,6 +23,7 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 				"insole_*_cop_x", "insole_*_cop_z", "insole_*_force_y",#18
 				"hip_angle_*", "hip_angle_*_velocity_filt",#21
 				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
+
 
 sensor_pick = [12,13,14,15,16,17,21,22,]
 

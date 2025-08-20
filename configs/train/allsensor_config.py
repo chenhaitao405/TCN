@@ -1,6 +1,6 @@
 import os
 
-model_name = "allsensor_p1p2"
+task_name = "allsensor_p1p2"  #sensor_trainData_valData
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
@@ -11,8 +11,7 @@ data_dirs = [
 ]
 
 # corresponding leg (model is not dependent on side)
-side = "r"
-
+side = ["r","l"]
 # corresponding model input names in dataset (* is substituted with side)
 input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z", 
 				"foot_imu_*_accel_x", "foot_imu_*_accel_y", "foot_imu_*_accel_z", 
