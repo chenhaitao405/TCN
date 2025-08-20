@@ -1,13 +1,13 @@
 import os
 
-task_name = "10action_kneeOnly_p1p2_p3"  #sensor_trainData_valData
+task_name = "10action_hiponly_p1p2"  #sensor_trainData_valData
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
 data_dirs = [
-    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed",
-    #  "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+
+     "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
 ]
 
 action_patterns = [
@@ -41,8 +41,9 @@ action_patterns = [
 	# r"^curb_.*",  # 27. Curb
 	# r"^step_ups_.*",  # 28. Step up
 ]
+
 # corresponding leg (model is not dependent on side)
-side = "r"
+side = ["r"]
 
 # corresponding model input names in dataset (* is substituted with side)
 input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  # 0- 2
@@ -56,10 +57,10 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
 
 
+sensor_pick = [12,13,14,15,16,17,21,22,]
 
-sensor_pick = [6,7,8,9,10,11,23,24,]
 # corresponding model label names in dataset
-label_names = [ "knee_angle_*_moment"]
+label_names = ["hip_flexion_*_moment"]
 
 # intentional model delay (in data points)
 model_delays = [10, 0] # hip moment estimates are delayed by 50 ms
