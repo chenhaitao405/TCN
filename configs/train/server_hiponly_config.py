@@ -1,12 +1,12 @@
 import os
 
-task_name = "hiponly_p1p2"  #sensor_trainData_valData
+task_name = "10action_hiponly_p1p2"  #sensor_trainData_valData
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
 data_dirs = [
-    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    "/home/lenovo/code/CHT/datasets/EXO/Phase1And2_Parsed/Parsed",
      # "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
 ]
 

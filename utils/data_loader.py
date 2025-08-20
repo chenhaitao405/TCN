@@ -20,19 +20,9 @@ class DataManager:
         config: Any,
         device: torch.device
     ) -> ConcatDataset:
-        """
-        Load all datasets from configured paths.
-
-        Args:
-            config: Configuration object with data_dirs, input_names, etc.
-            device: Device to load data on
-
-        Returns:
-            ConcatDataset containing all loaded data
-        """
+        """Load all datasets from configured paths."""
         print("Loading dataset...")
 
-        # 获取动作筛选模式
         action_patterns = getattr(config, 'action_patterns', None)
         if action_patterns:
             print(f"Filtering actions with patterns: {action_patterns}")
@@ -47,7 +37,7 @@ class DataManager:
                     label_names=[name.replace("*", side) for name in config.label_names],
                     side=side,
                     participant_masses=config.participant_masses,
-                    action_patterns=action_patterns,  # 传递动作筛选模式
+                    action_patterns=action_patterns,
                     device=device
                 )
                 datasets.append(dataset)
@@ -64,44 +54,26 @@ class DataManager:
             config: Any,
             cache_dir: str = 'cache'
     ) -> List[int]:
-        """
-        Get or compute valid indices (non-NaN samples) with caching.
-        支持config.side为字符串或列表。
-
-        Args:
-            full_dataset: Full dataset to filter
-            config: Configuration object
-            cache_dir: Directory to store cache files
-
-        Returns:
-            List of valid indices
-        """
-        # Create cache directory
+        """Get or compute valid indices (non-NaN samples) with caching."""
         os.makedirs(cache_dir, exist_ok=True)
 
-        # Generate cache filename
-        # 处理side可能是列表的情况
         if isinstance(config.side, list):
-            side_str = '_'.join(sorted(config.side))  # 排序确保一致性
+            side_str = '_'.join(sorted(config.side))
         else:
             side_str = config.side
 
-        # 包含action_patterns在缓存key中
         action_str = ""
         if hasattr(config, 'action_patterns') and config.action_patterns:
-            # 使用action_patterns的哈希值作为key的一部分
             action_str = hashlib.md5(str(config.action_patterns).encode()).hexdigest()[:8]
 
         cache_key = str(config.data_dirs) + str(config.input_names) + side_str + action_str
         cache_hash = hashlib.md5(cache_key.encode()).hexdigest()[:8]
         cache_path = os.path.join(cache_dir, f'valid_indices_{cache_hash}.json')
 
-        # Try to load cache
         if os.path.exists(cache_path):
             try:
                 with open(cache_path, 'r') as f:
                     cache_data = json.load(f)
-                # 验证缓存是否仍然有效
                 if (cache_data['total_trials'] == len(full_dataset) and
                         cache_data.get('side') == (side_str if isinstance(config.side, list) else config.side) and
                         cache_data.get('action_patterns_hash', '') == action_str):
@@ -110,29 +82,26 @@ class DataManager:
             except:
                 pass
 
-        # Compute valid indices
         print("Filtering trials with NaN...")
         valid_indices = []
 
-        # 如果使用方案B，需要知道每个side的数据集大小
         if isinstance(config.side, list):
             num_sides = len(config.side)
             print(f"Checking trials for {num_sides} sides...")
 
         for i in tqdm(range(len(full_dataset)), desc="Checking trials"):
-            inputs, labels, seq_lengths = full_dataset[i]
+            # Note: This now returns 4 items
+            inputs, labels, seq_lengths, trial_names = full_dataset[i]
             if not torch.isnan(inputs).any() and not torch.isnan(labels).any():
                 valid_indices.append(i)
 
         print(f"Valid trials: {len(valid_indices)}/{len(full_dataset)} "
               f"({100 * len(valid_indices) / len(full_dataset):.1f}%)")
 
-        # 如果是多个side，显示更详细的信息
         if isinstance(config.side, list):
             trials_per_side = len(valid_indices) // len(config.side)
             print(f"  Per side: approximately {trials_per_side} trials")
 
-        # Save cache with additional metadata
         cache_data = {
             'valid_indices': valid_indices,
             'total_trials': len(full_dataset),
@@ -153,30 +122,15 @@ class DataManager:
         val_split: float = 0.1,
         max_samples: Optional[int] = None
     ) -> Tuple[Subset, Subset]:
-        """
-        Create train/validation split from dataset.
-
-        Args:
-            full_dataset: Full dataset
-            config: Configuration object
-            val_split: Validation split ratio
-            max_samples: Optional maximum number of samples
-
-        Returns:
-            Tuple of (train_dataset, val_dataset)
-        """
-        # Get valid indices
+        """Create train/validation split from dataset."""
         valid_indices = DataManager.get_or_compute_valid_indices(full_dataset, config)
 
-        # Apply max_samples limit if specified
         if max_samples and len(valid_indices) > max_samples:
             valid_indices = valid_indices[:max_samples]
             print(f"Limited to {max_samples} samples")
 
-        # Create filtered dataset
         filtered_dataset = Subset(full_dataset, valid_indices)
 
-        # Split into train/val
         val_size = int(len(filtered_dataset) * val_split)
         train_size = len(filtered_dataset) - val_size
         train_dataset, val_dataset = random_split(filtered_dataset, [train_size, val_size])
@@ -192,18 +146,7 @@ class DataManager:
         batch_size: int,
         device: torch.device
     ) -> Tuple[DataLoader, DataLoader]:
-        """
-        Create DataLoaders for training and validation.
-
-        Args:
-            train_dataset: Training dataset
-            val_dataset: Validation dataset
-            batch_size: Batch size
-            device: Device to load data on
-
-        Returns:
-            Tuple of (train_loader, val_loader)
-        """
+        """Create DataLoaders for training and validation."""
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
@@ -221,20 +164,19 @@ class DataManager:
         return train_loader, val_loader
 
     @staticmethod
-    def collate_function(batch: List, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor, List[int]]:
-        """
-        Custom collate function for batching sequences.
-
-        Args:
-            batch: List of (input, label, seq_length) tuples
-            device: Device to load tensors on
-
-        Returns:
-            Tuple of (padded_inputs, padded_labels, seq_lengths)
-        """
+    def collate_function(batch: List, device: torch.device) -> Tuple:
+        """Custom collate function for batching sequences with trial names."""
         inputs = [item[0] for item in batch]
         labels = [item[1] for item in batch]
         seq_lengths = [item[2][0] for item in batch]
+
+        # Handle trial names - each item[3] is a list of trial names
+        trial_names = []
+        for item in batch:
+            if len(item[3]) == 1:  # Single trial
+                trial_names.append(item[3][0])
+            else:  # Multiple trials (shouldn't happen in typical usage)
+                trial_names.extend(item[3])
 
         # Remove extra dimensions
         inputs = [x.squeeze(0) for x in inputs]
@@ -253,4 +195,4 @@ class DataManager:
             padded_inputs.append(padded_inp)
             padded_labels.append(padded_lab)
 
-        return torch.stack(padded_inputs), torch.stack(padded_labels), seq_lengths
+        return torch.stack(padded_inputs), torch.stack(padded_labels), seq_lengths, trial_names

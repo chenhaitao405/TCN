@@ -15,8 +15,8 @@ from utils.metrics import ValidationMetrics, MetricsComputer
 from utils.visualization import ValidationVisualizer
 
 
-def validate_model(model, dataloader, device, config, label_names):
-    """Validate model and compute per-label metrics."""
+def validate_model(model, dataloader, device, config, label_names, dataset):
+    """Validate model and compute per-label and per-action metrics."""
     model.eval()
     metrics = ValidationMetrics(label_names)
     computer = MetricsComputer()
@@ -25,7 +25,9 @@ def validate_model(model, dataloader, device, config, label_names):
     with torch.no_grad():
         pbar = tqdm(dataloader, desc='Validating')
 
-        for batch_idx, (inputs, labels, seq_lengths) in enumerate(pbar):
+        for batch_idx, batch_data in enumerate(pbar):
+            # Unpack batch data (now includes trial names)
+            inputs, labels, seq_lengths, trial_names = batch_data
             inputs, labels = inputs.to(device), labels.to(device)
             batch_size = inputs.shape[0]
 
@@ -39,6 +41,19 @@ def validate_model(model, dataloader, device, config, label_names):
             # Skip if output contains NaN
             if torch.isnan(estimates).any():
                 continue
+
+            # Extract action types from trial names
+            action_types = []
+            for trial_name in trial_names:
+                # Get the actual dataset to access extract_action_type method
+                # Assuming dataset is ConcatDataset, get first dataset
+                if hasattr(dataset, 'datasets'):
+                    action_type = dataset.datasets[0].extract_action_type(trial_name)
+                else:
+                    # Fallback: basic extraction
+                    folder_name = trial_name.split('/')[-1] if '/' in trial_name else trial_name
+                    action_type = folder_name.split('_')[0]
+                action_types.append(action_type)
 
             # Process each sample in batch
             for i in range(batch_size):
@@ -83,8 +98,12 @@ def validate_model(model, dataloader, device, config, label_names):
                     sample_estimates[j] = estimate
                     sample_labels[j] = label
 
-                # Add this sample's results to metrics
-                metrics.add_batch_results(sample_estimates, sample_labels, sample_rmse, sample_r2)
+                # Add this sample's results to metrics with action type
+                metrics.add_batch_results(
+                    sample_estimates, sample_labels,
+                    sample_rmse, sample_r2,
+                    action_types=[action_types[i]]  # Pass the action type for this sample
+                )
 
             # Update progress bar with current batch statistics
             all_rmse = []
@@ -105,8 +124,9 @@ def validate_model(model, dataloader, device, config, label_names):
 
 
 def save_validation_results(metrics, save_dir, config_path, model_path):
-    """Save validation results to JSON file."""
+    """Save validation results including per-action metrics to JSON file."""
     summary = metrics.get_summary()
+    per_action_summary = metrics.compute_per_action_summary()
 
     # Prepare results dictionary
     results = {
@@ -114,7 +134,8 @@ def save_validation_results(metrics, save_dir, config_path, model_path):
         'config_path': config_path,
         'model_path': model_path,
         'per_label_metrics': {},
-        'overall_metrics': summary['overall']
+        'overall_metrics': summary['overall'],
+        'per_action_metrics': per_action_summary  # Add per-action metrics
     }
 
     # Add per-label metrics
@@ -184,31 +205,12 @@ def create_argument_parser():
 
 
 def setup_validation_directory_with_model_name(base_dir, model_path):
-    """
-    Create validation directory with model path name and timestamp.
-
-    Args:
-        base_dir: Base directory (e.g., 'validation_results')
-        model_path: Model path from config (e.g., 'allsensor')
-
-    Returns:
-        Full path to the created directory
-    """
-    # Extract model name from path (remove directory and extension if present)
+    """Create validation directory with model path name and timestamp."""
     model_name = os.path.splitext(os.path.basename(model_path))[0]
-
-    # Create timestamp
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-    # Create directory name with format: val_modelname_timestamp
     dir_name = f'val_{model_name}_{timestamp}'
-
-    # Create full path
     full_path = os.path.join(base_dir, dir_name)
-
-    # Create directory
     os.makedirs(full_path, exist_ok=True)
-
     return full_path
 
 
@@ -268,9 +270,9 @@ def main():
         collate_fn=lambda x: data_manager.collate_function(x, device)
     )
 
-    # Validate model
+    # Validate model - pass dataset for action extraction
     print(f"\nValidating model on {len(filtered_dataset)} trials...")
-    metrics = validate_model(model, val_loader, device, config, label_names)
+    metrics = validate_model(model, val_loader, device, config, label_names, full_dataset)
 
     # Print summary
     print_validation_summary(metrics)
@@ -290,6 +292,12 @@ def main():
         plot_path = visualizer.plot_metrics_summary(metrics)
         plots.append(plot_path)
         print(f"  - Metrics summary saved to: {plot_path}")
+
+        # NEW: Per-action metrics plots
+        plot_paths = visualizer.plot_per_action_metrics(metrics, config)
+        for plot_path in plot_paths:
+            plots.append(plot_path)
+            print(f"  - Per-action metrics saved to: {plot_path}")
 
         # Predictions vs actual scatter plots
         plot_path = visualizer.plot_predictions_vs_actual(metrics)

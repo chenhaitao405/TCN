@@ -1,18 +1,18 @@
 import os
 
-task_name = "allsensor_p1p2_p3"  #sensor_trainData_valData
+task_name = "allsensor_p1p2p3_p3"  #sensor_trainData_valData
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
 data_dirs = [
     # "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-    "/home/num2/datasets/EXO/Phase3_Parsed/test"
+    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
 ]
 
 
 # corresponding leg (model is not dependent on side)
-side = ["r","l"]
+side = "r"
 
 # corresponding model input names in dataset (* is substituted with side)
 input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z", 

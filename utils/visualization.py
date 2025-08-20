@@ -6,9 +6,11 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from torch.utils.tensorboard import SummaryWriter
 from typing import Optional, Dict, Any, List
 from scipy import stats
+
 
 
 class TrainingVisualizer:
@@ -163,6 +165,185 @@ class ValidationVisualizer:
         self.save_dir = save_dir
         self.plots_dir = os.path.join(save_dir, 'validation_plots')
         os.makedirs(self.plots_dir, exist_ok=True)
+
+    def plot_per_action_metrics(self, metrics: Any, config: Any) -> List[str]:
+        """Create plots showing metrics for each action type, organized by label."""
+        per_action_summary = metrics.compute_per_action_summary()
+
+        # Define action importance order (from your research)
+        action_order = [
+            "normal_walk", "poses", "dynamic_walk", "push", "jump",
+            "turn_and_step", "cutting", "sit_to_stand", "walk_backward",
+            "weighted_walk", "lift_weight", "tug_of_war", "incline_walk",
+            "stairs", "lunges", "meander", "twister", "start_stop",
+            "ball_toss", "obstacle_walk", "squats", "curb", "step_ups",
+            "side_shuffle", "tire_run"
+        ]
+
+        plot_paths = []
+
+        # Create a plot for each label
+        for label_name in metrics.label_names:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
+            fig.suptitle(f'Per-Action Metrics for {label_name}', fontsize=16)
+
+            # Collect data for this label
+            actions = []
+            rmse_means = []
+            rmse_stds = []
+            r2_means = []
+            r2_stds = []
+            n_samples = []
+
+            # Sort actions by importance order
+            sorted_actions = []
+            for action in action_order:
+                if action in per_action_summary and label_name in per_action_summary[action]:
+                    sorted_actions.append(action)
+
+            # Add any remaining actions not in the order list
+            for action in sorted(per_action_summary.keys()):
+                if action not in sorted_actions:
+                    sorted_actions.append(action)
+
+            # Collect metrics for each action
+            for action in sorted_actions:
+                if label_name in per_action_summary[action]:
+                    action_metrics = per_action_summary[action][label_name]
+                    if action_metrics['n_samples'] > 0:
+                        actions.append(action)
+                        rmse_means.append(action_metrics['rmse_mean'])
+                        rmse_stds.append(action_metrics['rmse_std'])
+                        r2_means.append(action_metrics['r2_mean'])
+                        r2_stds.append(action_metrics['r2_std'])
+                        n_samples.append(action_metrics['n_samples'])
+
+            if not actions:
+                plt.close(fig)
+                continue
+
+            x = np.arange(len(actions))
+
+            # RMSE plot
+            bars1 = ax1.bar(x, rmse_means, yerr=rmse_stds, capsize=5, alpha=0.7)
+            ax1.set_xlabel('Action Type', fontsize=12)
+            ax1.set_ylabel('RMSE (Nm/kg)', fontsize=12)
+            ax1.set_title('RMSE by Action Type', fontsize=14)
+            ax1.set_xticks(x)
+            ax1.set_xticklabels(actions, rotation=45, ha='right')
+            ax1.grid(True, alpha=0.3, axis='y')
+
+            # Color bars based on performance (lower RMSE is better)
+            rmse_threshold_good = np.percentile(rmse_means, 33)
+            rmse_threshold_bad = np.percentile(rmse_means, 67)
+            for bar, rmse in zip(bars1, rmse_means):
+                if rmse <= rmse_threshold_good:
+                    bar.set_color('green')
+                elif rmse <= rmse_threshold_bad:
+                    bar.set_color('orange')
+                else:
+                    bar.set_color('red')
+
+            # Add value labels
+            for i, (v, n) in enumerate(zip(rmse_means, n_samples)):
+                ax1.text(i, v + (rmse_stds[i] if i < len(rmse_stds) else 0),
+                         f'{v:.3f}\n(n={n})', ha='center', va='bottom', fontsize=8)
+
+            # R² plot
+            bars2 = ax2.bar(x, r2_means, yerr=r2_stds, capsize=5, alpha=0.7)
+            ax2.set_xlabel('Action Type', fontsize=12)
+            ax2.set_ylabel('R² Score', fontsize=12)
+            ax2.set_title('R² Score by Action Type', fontsize=14)
+            ax2.set_xticks(x)
+            ax2.set_xticklabels(actions, rotation=45, ha='right')
+            ax2.set_ylim([0, 1.1])
+            ax2.axhline(y=0.5, color='red', linestyle='--', alpha=0.5)
+            ax2.axhline(y=0.7, color='orange', linestyle='--', alpha=0.5)
+            ax2.axhline(y=0.9, color='green', linestyle='--', alpha=0.5)
+            ax2.grid(True, alpha=0.3, axis='y')
+
+            # Color bars based on R² value
+            for bar, r2 in zip(bars2, r2_means):
+                if r2 >= 0.9:
+                    bar.set_color('green')
+                elif r2 >= 0.7:
+                    bar.set_color('orange')
+                elif r2 >= 0.5:
+                    bar.set_color('yellow')
+                else:
+                    bar.set_color('red')
+
+            # Add value labels
+            for i, (v, n) in enumerate(zip(r2_means, n_samples)):
+                ax2.text(i, v + (r2_stds[i] if i < len(r2_stds) else 0),
+                         f'{v:.3f}', ha='center', va='bottom', fontsize=8)
+
+            plt.tight_layout()
+            save_path = os.path.join(self.plots_dir, f'per_action_metrics_{label_name}.png')
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            plot_paths.append(save_path)
+
+        # Create heatmap for all actions and labels
+        if len(metrics.label_names) > 1:
+            plot_path = self._create_action_label_heatmap(per_action_summary, metrics.label_names)
+            if plot_path:
+                plot_paths.append(plot_path)
+
+        return plot_paths
+
+    def _create_action_label_heatmap(self, per_action_summary: Dict, label_names: List[str]) -> Optional[str]:
+        """Create a heatmap showing RMSE for all action-label combinations."""
+        # Prepare data for heatmap
+        actions = sorted(per_action_summary.keys())
+
+        # Create matrices for RMSE and R²
+        rmse_matrix = []
+        r2_matrix = []
+
+        for action in actions:
+            rmse_row = []
+            r2_row = []
+            for label in label_names:
+                if label in per_action_summary[action]:
+                    metrics = per_action_summary[action][label]
+                    rmse_row.append(metrics['rmse_mean'] if metrics['n_samples'] > 0 else np.nan)
+                    r2_row.append(metrics['r2_mean'] if metrics['n_samples'] > 0 else np.nan)
+                else:
+                    rmse_row.append(np.nan)
+                    r2_row.append(np.nan)
+            rmse_matrix.append(rmse_row)
+            r2_matrix.append(r2_row)
+
+        if not rmse_matrix:
+            return None
+
+        # Create figure with two subplots
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, max(10, len(actions) * 0.3)))
+        fig.suptitle('Action-Label Performance Heatmap', fontsize=16)
+
+        # RMSE heatmap
+        rmse_df = pd.DataFrame(rmse_matrix, index=actions, columns=label_names)
+        sns.heatmap(rmse_df, annot=True, fmt='.3f', cmap='RdYlGn_r',
+                    cbar_kws={'label': 'RMSE (Nm/kg)'}, ax=ax1)
+        ax1.set_title('RMSE Heatmap')
+        ax1.set_xlabel('Label')
+        ax1.set_ylabel('Action Type')
+
+        # R² heatmap
+        r2_df = pd.DataFrame(r2_matrix, index=actions, columns=label_names)
+        sns.heatmap(r2_df, annot=True, fmt='.3f', cmap='RdYlGn',
+                    cbar_kws={'label': 'R² Score'}, vmin=0, vmax=1, ax=ax2)
+        ax2.set_title('R² Score Heatmap')
+        ax2.set_xlabel('Label')
+        ax2.set_ylabel('Action Type')
+
+        plt.tight_layout()
+        save_path = os.path.join(self.plots_dir, 'action_label_heatmap.png')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        return save_path
 
     def plot_metrics_summary(self, metrics: Any) -> str:
         """Create bar plots for RMSE and R² per label."""

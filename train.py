@@ -36,7 +36,7 @@ def train_epoch(
     total_batches = len(dataloader)
     computer = MetricsComputer()
 
-    for batch_idx, (inputs, labels, seq_lengths) in enumerate(pbar):
+    for batch_idx, (inputs, labels, seq_lengths,_) in enumerate(pbar):
         inputs, labels = inputs.to(device), labels.to(device)
 
         # Forward pass
@@ -119,7 +119,7 @@ def validate_epoch(
 
     with torch.no_grad():
         pbar = tqdm(dataloader, desc=f'Epoch {epoch}/{total_epochs} [Valid]')
-        for inputs, labels, seq_lengths in pbar:
+        for inputs, labels, seq_lengths,_ in pbar:
             inputs, labels = inputs.to(device), labels.to(device)
 
             # Skip batch if input contains NaN
@@ -268,7 +268,7 @@ def main():
     )
 
     print("\nModel loaded successfully!")
-    print(f"Model architecture: {model}")
+    # print(f"Model architecture: {model}")
 
     # Prepare data
     data_manager = DataManager()
