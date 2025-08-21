@@ -2,7 +2,7 @@ import os
 
 task_name = "10action_kneeOnly_p1p2_p3"  #sensor_trainData_valData
 # relative file path to trained model
-model_path = os.path.join("models", "p1+p2_finalmodel.tar")
+model_path = "checkpoints/train_10Action_kneeonly_p1p2_20250820_175252/best_model.tar"
 
 # relative path to data
 data_dirs = [
@@ -12,7 +12,8 @@ data_dirs = [
 
 action_patterns = [
 	# === 按论文中重要性排序的动作筛选 ===
-	r"^normal_walk_.*",  # 1. Level ground walk - 最重要
+	# r"^normal_walk_.*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差）
+	r"^normal_walk_.*_(1-2|1-8|2-0|2-5|skip).*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差,排除）
 	r"^poses_.*",  # 2. Standing poses
 	# r"^dynamic_walk_.*(high-knees|butt-kicks).*",  # 3. Calisthenics (high-knees, butt-kicks)
 	r"^push_.*",  # 4. Push and pull recovery
@@ -62,7 +63,7 @@ sensor_pick = [6,7,8,9,10,11,23,24,]
 label_names = [ "knee_angle_*_moment"]
 
 # intentional model delay (in data points)
-model_delays = [10, 0] # hip moment estimates are delayed by 50 ms
+model_delays = [0] # hip moment estimates are delayed by 50 ms
 
 # participant masses for normalizing insole forces.
 # - NOTE: This is a simplification. Detailed participant masses are provided in the readme of the corresponding dataset.

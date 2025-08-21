@@ -11,7 +11,8 @@ data_dirs = [
 ]
 
 # corresponding leg (model is not dependent on side)
-side = "r"
+side = ["r","l"]
+
 
 # corresponding model input names in dataset (* is substituted with side)
 input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  # 0- 2
@@ -26,7 +27,8 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 
 action_patterns = [
 	# === 按论文中重要性排序的动作筛选 ===
-	r"^normal_walk_.*",  # 1. Level ground walk - 最重要
+	# r"^normal_walk_.*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差）
+	r"^normal_walk_.*_(1-2|1-8|2-0|2-5|skip).*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差,排除）
 	r"^poses_.*",  # 2. Standing poses
 	# r"^dynamic_walk_.*(high-knees|butt-kicks).*",  # 3. Calisthenics (high-knees, butt-kicks)
 	r"^push_.*",  # 4. Push and pull recovery

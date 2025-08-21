@@ -64,7 +64,9 @@ class TcnDataset(Dataset):
         """
         Extract action type from trial name.
         Examples:
-            'BT01/normal_walk_1_0-6_on' -> 'normal_walk'
+            'BT01/normal_walk_1_0-6_on' -> 'normal_walk_0-6'
+            'BT01/normal_walk_1_1_0-6_on' -> 'normal_walk_0-6'
+            'BT01/normal_walk_1_shuffle_on' -> 'normal_walk_shuffle'
             'BT02/jump_1_fb_on' -> 'jump'
             'BT03/dynamic_walk_1_high-knees_on' -> 'dynamic_walk'
         """
@@ -81,14 +83,29 @@ class TcnDataset(Dataset):
 
         # Handle compound action names
         compound_actions = ['normal_walk', 'dynamic_walk', 'incline_walk', 'walk_backward',
-                           'weighted_walk', 'obstacle_walk', 'sit_to_stand', 'curb_down',
-                           'curb_up', 'lift_weight', 'side_shuffle', 'tug_of_war',
-                           'turn_and_step', 'tire_run', 'start_stop', 'step_ups']
+                            'weighted_walk', 'obstacle_walk', 'sit_to_stand', 'curb_down',
+                            'curb_up', 'lift_weight', 'side_shuffle', 'tug_of_war',
+                            'turn_and_step', 'tire_run', 'start_stop', 'step_ups']
 
         # Check for compound actions
         if len(parts) >= 2:
             potential_compound = f"{parts[0]}_{parts[1]}"
-            if potential_compound in compound_actions:
+
+            # Special handling for normal_walk - extract speed/type information
+            if potential_compound == 'normal_walk':
+                # Define normal_walk speed/type identifiers
+                normal_walk_types = ['0-6', '1-2', '1-8', '2-0', '2-5', 'shuffle', 'skip']
+
+                # Search for speed/type identifier in the remaining parts
+                for part in parts[2:]:  # Start from index 2 (after 'normal_walk')
+                    if part in normal_walk_types:
+                        return f"normal_walk_{part}"
+
+                # If no specific type found, return just 'normal_walk'
+                return 'normal_walk'
+
+            # For other compound actions, return as before
+            elif potential_compound in compound_actions:
                 return potential_compound
 
         # Return first part as action type

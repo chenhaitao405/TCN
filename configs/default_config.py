@@ -1,7 +1,7 @@
 import os
 
 # relative file path to trained model
-model_path = os.path.join("models", "p1+p2_p3final_model.tar")
+model_path = os.path.join("models", "trained_tcn.tar")
 
 # relative path to data
 data_dir = os.path.join("data")

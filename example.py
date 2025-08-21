@@ -1,9 +1,9 @@
 import argparse
 from typing import List
 import torch
+from dataloader import TcnDataset2
 from utils.config_utils import ConfigManager
 from utils.tcn import TCN
-from utils.TCNdataset import TcnDataset
 
 # parse CLI arguments
 parser = argparse.ArgumentParser()
@@ -75,7 +75,7 @@ def main():
 	# Load data after replacing * with desired side from config
 	input_names = [name.replace("*", config.side) for name in config.input_names]
 	label_names = [name.replace("*", config.side) for name in config.label_names]
-	dataset = TcnDataset(data_dir = config.data_dir,
+	dataset = TcnDataset2(data_dir = config.data_dir,
 							input_names = input_names,
 							label_names = label_names,
 							side = config.side,

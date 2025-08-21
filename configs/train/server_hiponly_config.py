@@ -12,7 +12,8 @@ data_dirs = [
 
 action_patterns = [
 	# === 按论文中重要性排序的动作筛选 ===
-	r"^normal_walk_.*",  # 1. Level ground walk - 最重要
+	# r"^normal_walk_.*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差）
+	r"^normal_walk_.*_(1-2|1-8|2-0|2-5|skip).*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差,排除）
 	r"^poses_.*",  # 2. Standing poses
 	# r"^dynamic_walk_.*(high-knees|butt-kicks).*",  # 3. Calisthenics (high-knees, butt-kicks)
 	r"^push_.*",  # 4. Push and pull recovery
@@ -41,6 +42,7 @@ action_patterns = [
 	# r"^curb_.*",  # 27. Curb
 	# r"^step_ups_.*",  # 28. Step up
 ]
+
 
 # corresponding leg (model is not dependent on side)
 side = ["r","l"]

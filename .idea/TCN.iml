@@ -2,7 +2,7 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
-    <orderEntry type="jdk" jdkName="Remote Python 3.7.1 (sftp://lenovo@192.168.72.121:22/home/lenovo/anaconda3/envs/TCN/bin/python3)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="TCN" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">
