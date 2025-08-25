@@ -1,7 +1,7 @@
 import os
 
 # relative file path to trained model
-task_name = "10Action_kneeonly_p1p2"  #sensor_trainData_valData
+task_name = "10Action_kneeonly_thigh_p1p2"  #sensor_trainData_valData
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
@@ -24,6 +24,8 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 				"insole_*_cop_x", "insole_*_cop_z", "insole_*_force_y",#18
 				"hip_angle_*", "hip_angle_*_velocity_filt",#21
 				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
+
+sensor_pick = [12,13,14,15,16,17,23,24,]
 
 action_patterns = [
 	# === 按论文中重要性排序的动作筛选 ===
@@ -59,7 +61,7 @@ action_patterns = [
 ]
 
 
-sensor_pick = [6,7,8,9,10,11,23,24,]
+
 # corresponding model label names in dataset
 label_names = [ "knee_angle_*_moment"]
 

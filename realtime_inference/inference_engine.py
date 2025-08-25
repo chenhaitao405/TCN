@@ -88,19 +88,11 @@ class InferenceEngine:
         with torch.no_grad():
             output = self.model(input_tensor)
 
-        # 提取最新时刻的输出，考虑模型延迟
+        # 提取输出 - 模型输出的最后一个时刻是对"当前-delay"时刻的预测
         moments = {}
         for i, label_name in enumerate(self.label_names):
-            if i < len(self.model_delays):
-                delay = self.model_delays[i]
-                # 如果有延迟，从历史中取对应时刻
-                if delay > 0 and output.shape[2] > delay:
-                    moment_value = output[0, i, -1 - delay].item()
-                else:
-                    moment_value = output[0, i, -1].item()
-            else:
-                moment_value = output[0, i, -1].item()
-
+            # 获取最新的预测值（这是对past时刻的预测）
+            moment_value = output[0, i, -1].item()
             moments[label_name] = moment_value
 
         # 记录推理时间

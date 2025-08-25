@@ -1,6 +1,6 @@
 import os
 
-task_name = "10action_kneeOnly_p1p2_p3"  #sensor_trainData_valData
+task_name = "10Action_kneeonly_thigh_p1p2"  #sensor_trainData_valData  #sensor_trainData_valData
 # relative file path to trained model
 model_path = "checkpoints/train_10Action_kneeonly_p1p2_20250820_175252/best_model.tar"
 
@@ -58,12 +58,13 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 
 
 
-sensor_pick = [6,7,8,9,10,11,23,24,]
+sensor_pick = [12,13,14,15,16,17,23,24,]
+
 # corresponding model label names in dataset
 label_names = [ "knee_angle_*_moment"]
 
 # intentional model delay (in data points)
-model_delays = [0] # hip moment estimates are delayed by 50 ms
+model_delays = [10] # hip moment estimates are delayed by 50 ms
 
 # participant masses for normalizing insole forces.
 # - NOTE: This is a simplification. Detailed participant masses are provided in the readme of the corresponding dataset.

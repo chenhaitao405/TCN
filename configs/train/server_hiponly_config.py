@@ -1,6 +1,6 @@
 import os
 
-task_name = "10action_hiponly_p1p2"  #sensor_trainData_valData
+task_name = "actuator_hiponly_p1p2"   #sensor_trainData_valData
 # relative file path to trained model
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
@@ -59,7 +59,7 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
 
 
-sensor_pick = [12,13,14,15,16,17,21,22,]
+sensor_pick = [21,22,]
 
 # corresponding model label names in dataset
 label_names = ["hip_flexion_*_moment"]
