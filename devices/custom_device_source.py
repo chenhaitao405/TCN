@@ -53,7 +53,7 @@ class CustomDeviceSource(DataSource):
             # 创建数据加载器
             self.custom_loader = CustomDataLoader(csv_path, label_filter)
 
-            # 创建预处理器
+            # 创建预处理器（始终启用坐标转换）
             self.side = side
             self.preprocessor = DataPreprocessor(self.config, side)
 
@@ -116,7 +116,7 @@ class CustomDeviceSource(DataSource):
                 raw_data = self.custom_loader.get_next_frame()
 
                 if raw_data:
-                    # 预处理数据
+                    # 预处理数据（始终进行坐标转换）
                     processed_data = self.preprocessor.process(raw_data)
 
                     # 放入缓冲区（非阻塞）
@@ -165,33 +165,21 @@ class CustomDeviceSource(DataSource):
             # 缓冲区为空
             return None, None
 
-    def get_next_frame_with_debug(self) -> Tuple[Optional[Dict], Optional[Dict], Optional[Dict]]:
+    def get_next_frame_with_raw(self) -> Tuple[Optional[Dict], Optional[Dict]]:
         """
-        获取下一帧数据（带调试信息）
+        获取下一帧数据（带原始数据）
         Returns:
-            (processed_data, raw_data, debug_info)
+            (processed_data, raw_data)
         """
         if not self.is_connected:
-            return None, None, None
+            return None, None
 
         try:
             data = self.data_buffer.get_nowait()
-
-            # 生成调试信息
-            debug_info = {
-                'timestamp': data['timestamp'],
-                'frame_count': self.frame_count,
-                'buffer_size': self.data_buffer.qsize(),
-                'preprocessing_info': self.preprocessor.get_debug_info(
-                    data['raw'],
-                    data['processed']
-                )
-            }
-
-            return data['processed'], data['raw'], debug_info
+            return data['processed'], data['raw']
 
         except Empty:
-            return None, None, None
+            return None, None
 
     def reset(self):
         """重置数据源"""
@@ -237,18 +225,6 @@ class CustomDeviceSource(DataSource):
         except Exception as e:
             print(f"Error connecting to ROS: {e}")
             return False
-
-    def set_preprocessing_params(self, params: Dict):
-        """
-        设置预处理参数
-        Args:
-            params: 预处理参数字典
-        """
-        if self.preprocessor:
-            if 'coordinate_transform' in params:
-                self.preprocessor.set_coordinate_transform(params['coordinate_transform'])
-            if 'unit_conversion' in params:
-                self.preprocessor.set_unit_conversion(params['unit_conversion'])
 
     def get_status(self) -> Dict:
         """获取状态信息"""

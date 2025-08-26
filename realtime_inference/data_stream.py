@@ -267,11 +267,7 @@ class DataStreamManager:
             )
 
             if success:
-                # 设置预处理参数
-                self.custom_device_source.set_preprocessing_params(
-                    config.get('preprocessing', {})
-                )
-
+                # 预处理参数现在是固定的，不需要设置
                 # 启动数据流
                 self.custom_device_source.start_streaming()
 
@@ -291,8 +287,8 @@ class DataStreamManager:
 
     def stream_frames_with_debug(self):
         """
-        流式输出数据帧（带调试信息）
-        专门用于自定义设备源
+        流式输出数据帧（带原始数据信息）
+        专门用于自定义设备源显示原始数据对比
         """
         self.is_playing = True
         frame_interval = 1.0 / (self.sampling_rate * self.playback_speed)
@@ -305,9 +301,9 @@ class DataStreamManager:
                 continue
 
             # 根据源类型获取数据
-            if self.use_custom_device and hasattr(self.custom_device_source, 'get_next_frame_with_debug'):
-                # 获取带调试信息的数据
-                sensor_data, raw_data, debug_info = self.custom_device_source.get_next_frame_with_debug()
+            if self.use_custom_device and hasattr(self.custom_device_source, 'get_next_frame_with_raw'):
+                # 获取带原始数据的信息
+                sensor_data, raw_data = self.custom_device_source.get_next_frame_with_raw()
 
                 if sensor_data is None:
                     # 检查是否结束
@@ -321,7 +317,8 @@ class DataStreamManager:
                 # 计算时间戳
                 timestamp = frame_count / self.sampling_rate
 
-                yield sensor_data, None, timestamp, raw_data, debug_info
+                # 返回5个值以保持兼容性，但第5个值为空字典
+                yield sensor_data, None, timestamp, raw_data, {}
 
             else:
                 # 使用原始的stream_frames逻辑
@@ -331,7 +328,7 @@ class DataStreamManager:
                     break
 
                 timestamp = frame_count / self.sampling_rate
-                yield sensor_data, ground_truth, timestamp, None, None
+                yield sensor_data, ground_truth, timestamp, None, {}
 
             frame_count += 1
 
