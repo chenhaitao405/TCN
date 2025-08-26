@@ -3,52 +3,86 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import pyqtgraph as pg
 import numpy as np
-from scipy import interpolate  # 添加这行
+from scipy import interpolate
 from collections import deque, defaultdict
 import sys
 import os
 from typing import Dict, Optional, List, Tuple
+from devices.device_config_dialog import DeviceConfigDialog, DebugPanel
 
 
 class InferenceWorker(QThread):
-    """推理工作线程"""
+    """推理工作线程（修改版）"""
     data_ready = pyqtSignal(dict, dict, float)  # sensor_data, moments, timestamp
+    raw_data_ready = pyqtSignal(dict, dict, float)  # processed_data, raw_data, timestamp
     status_update = pyqtSignal(str, dict)
     finished = pyqtSignal()
 
-    def __init__(self, inference_engine, data_stream):
+    def __init__(self, inference_engine, data_stream, use_raw_display=False):
         super().__init__()
         self.inference_engine = inference_engine
         self.data_stream = data_stream
         self.is_running = False
+        self.use_raw_display = use_raw_display  # 是否使用原始数据显示
 
     def run(self):
-        """线程主循环"""
+        """线程主循环（修改版）"""
         self.is_running = True
 
-        for sensor_data, ground_truth, timestamp in self.data_stream.stream_frames():
-            if not self.is_running:
-                break
+        if self.use_raw_display and hasattr(self.data_stream, 'stream_frames_with_debug'):
+            # 原始数据显示模式
+            for data in self.data_stream.stream_frames_with_debug():
+                if not self.is_running:
+                    break
 
-            # 执行推理
-            moments = self.inference_engine.process_frame(sensor_data)
+                if len(data) == 5:  # 带原始数据信息
+                    sensor_data, ground_truth, timestamp, raw_data, _ = data
 
-            # 简单地合并数据
-            combined_data = moments.copy() if moments else {}
+                    if sensor_data is None:
+                        continue
 
-            # 添加ground truth
-            if ground_truth:
-                for key, value in ground_truth.items():
-                    combined_data[f"{key}_truth"] = value
+                    # 执行推理
+                    moments = self.inference_engine.process_frame(sensor_data)
 
-            # 发送数据信号
-            self.data_ready.emit(sensor_data, combined_data, timestamp)
+                    # 发送原始数据信号
+                    self.raw_data_ready.emit(
+                        sensor_data,  # 处理后的数据
+                        raw_data if raw_data else {},  # 原始数据
+                        timestamp
+                    )
 
-            # 定期发送状态更新
-            if int(timestamp * 10) % 10 == 0:
-                stats = self.inference_engine.get_performance_stats()
-                status_text = f"推理时间: {stats['avg_inference_time']:.2f}ms"
-                self.status_update.emit(status_text, stats)
+                    # 简单地合并数据
+                    combined_data = moments.copy() if moments else {}
+                    if ground_truth:
+                        for key, value in ground_truth.items():
+                            combined_data[f"{key}_truth"] = value
+
+                    # 发送常规数据信号
+                    self.data_ready.emit(sensor_data, combined_data, timestamp)
+
+        else:
+            # 常规模式（原始代码）
+            for sensor_data, ground_truth, timestamp in self.data_stream.stream_frames():
+                if not self.is_running:
+                    break
+
+                # 执行推理
+                moments = self.inference_engine.process_frame(sensor_data)
+
+                # 简单地合并数据
+                combined_data = moments.copy() if moments else {}
+                if ground_truth:
+                    for key, value in ground_truth.items():
+                        combined_data[f"{key}_truth"] = value
+
+                # 发送数据信号
+                self.data_ready.emit(sensor_data, combined_data, timestamp)
+
+                # 定期发送状态更新
+                if int(timestamp * 10) % 10 == 0:
+                    stats = self.inference_engine.get_performance_stats()
+                    status_text = f"推理时间: {stats['avg_inference_time']:.2f}ms"
+                    self.status_update.emit(status_text, stats)
 
         self.finished.emit()
 
@@ -96,6 +130,12 @@ class RealtimeInferenceDashboard(QMainWindow):
 
         # 添加：R²分数标签字典
         self.r2_labels = {}
+
+        # 添加自定义设备相关属性
+        self.custom_device_config = None
+        self.debug_panel = None
+        self.use_custom_device = False
+        self.show_raw_panel = False
 
         # 组织试验数据
         self.organize_trial_data()
@@ -218,7 +258,7 @@ class RealtimeInferenceDashboard(QMainWindow):
         return panel
 
     def create_control_panel(self):
-        """创建控制面板"""
+        """创建控制面板（修改版）"""
         panel = QGroupBox("控制面板")
         layout = QHBoxLayout()
 
@@ -229,17 +269,22 @@ class RealtimeInferenceDashboard(QMainWindow):
         self.source_combo.currentIndexChanged.connect(self.on_source_changed)
         layout.addWidget(self.source_combo)
 
-        # 受试者选择
+        # 添加配置按钮
+        self.config_device_btn = QPushButton("⚙ 配置设备")
+        self.config_device_btn.setVisible(False)
+        self.config_device_btn.clicked.connect(self.on_config_device_clicked)
+        layout.addWidget(self.config_device_btn)
+
+        # 受试者选择（在实时设备模式下隐藏）
         layout.addWidget(QLabel("受试者:"))
         self.participant_combo = QComboBox()
         self.participant_combo.addItems(self.participants)
         self.participant_combo.currentTextChanged.connect(self.on_participant_changed)
         layout.addWidget(self.participant_combo)
 
-        # 动作选择
+        # 动作选择（在实时设备模式下隐藏）
         layout.addWidget(QLabel("动作:"))
         self.action_combo = QComboBox()
-        # 初始化第一个受试者的动作列表
         if self.participants:
             first_participant = self.participants[0]
             self.action_combo.addItems(sorted(self.participants_actions[first_participant]))
@@ -479,10 +524,10 @@ class RealtimeInferenceDashboard(QMainWindow):
     def set_plot_interaction(self, enable_pan: bool):
         """设置图表交互模式
         Args:
-            enable_pan: True启用拖动（暂停时），False禁用拖动（播放时）
+            enable_pan: True可用拖动（暂停时），False禁用拖动（播放时）
         """
         # 播放时：禁用x轴拖动，但保留滚轮缩放
-        # 暂停时：启用x轴拖动和滚轮缩放
+        # 暂停时：可用x轴拖动和滚轮缩放
         for plot in [self.sensor_plot, self.joint1_plot, self.joint2_plot]:
             plot.setMouseEnabled(x=enable_pan, y=False)
             # 设置鼠标模式：PanMode表示左键拖拽，RectMode表示框选
@@ -506,15 +551,42 @@ class RealtimeInferenceDashboard(QMainWindow):
             self.joint2_plot.setXRange(x_min, x_max, padding=0)
 
     def on_source_changed(self, index):
-        """数据源切换"""
-        use_device = (index == 1)
-        self.data_stream.set_source(use_device)
-        self.participant_combo.setEnabled(not use_device)
-        self.action_combo.setEnabled(not use_device)
+        """数据源切换（修改版）"""
+        if index == 1:  # 实时设备
+            # 显示配置按钮
+            self.config_device_btn.setVisible(True)
 
-        if use_device:
-            self.status_bar.showMessage("已切换到实时设备模式（功能待实现）")
-        else:
+            # 如果还没有配置，提示用户配置
+            if not self.custom_device_config:
+                reply = QMessageBox.question(
+                    self,
+                    "配置设备",
+                    "需要配置设备数据源。是否现在配置？",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+
+                if reply == QMessageBox.Yes:
+                    self.on_config_device_clicked()
+                else:
+                    # 切换回数据集模式
+                    self.source_combo.setCurrentIndex(0)
+
+        else:  # 数据集模拟
+            use_device = False
+            self.data_stream.set_source(use_device)
+            self.participant_combo.setEnabled(True)
+            self.action_combo.setEnabled(True)
+            self.participant_combo.setVisible(True)
+            self.action_combo.setVisible(True)
+            self.config_device_btn.setVisible(False)
+            self.use_custom_device = False
+
+            # 隐藏原始数据面板
+            if self.debug_panel:
+                for dock in self.findChildren(QDockWidget):
+                    if dock.widget() == self.debug_panel:
+                        dock.setVisible(False)
+
             self.status_bar.showMessage("已切换到数据集模式")
 
     def on_participant_changed(self, participant: str):
@@ -574,7 +646,7 @@ class RealtimeInferenceDashboard(QMainWindow):
         self.data_stream.set_playback_speed(speed)
 
     def on_start_clicked(self):
-        """开始按钮点击"""
+        """开始按钮点击（修改版）"""
         if self.worker is not None:
             self.worker.stop()
             self.worker.wait()
@@ -583,16 +655,22 @@ class RealtimeInferenceDashboard(QMainWindow):
         self.clear_buffers()
 
         # 确保数据流不在暂停状态
-        self.data_stream.is_paused = False  # 添加：确保开始时不是暂停状态
-        self.data_stream.is_playing = True  # 添加：设置播放状态
+        self.data_stream.is_paused = False
+        self.data_stream.is_playing = True
 
         # 设置播放状态
         self.is_playing = True
-        self.set_plot_interaction(False)  # 播放时禁用拖动
+        self.set_plot_interaction(False)
 
         # 创建并启动工作线程
-        self.worker = InferenceWorker(self.inference_engine, self.data_stream)
+        use_raw_display = self.use_custom_device and self.show_raw_panel
+        self.worker = InferenceWorker(self.inference_engine, self.data_stream, use_raw_display)
         self.worker.data_ready.connect(self.update_plots)
+
+        # 连接原始数据信号
+        if use_raw_display:
+            self.worker.raw_data_ready.connect(self.update_raw_info)
+
         self.worker.status_update.connect(self.update_status)
         self.worker.finished.connect(self.on_inference_finished)
         self.worker.start()
@@ -600,8 +678,13 @@ class RealtimeInferenceDashboard(QMainWindow):
         # 更新按钮状态
         self.start_btn.setEnabled(False)
         self.pause_btn.setEnabled(True)
-        self.pause_btn.setText("⏸ 暂停")  # 确保开始时显示暂停按钮
+        self.pause_btn.setText("⏸ 暂停")
         self.status_bar.showMessage("推理进行中...")
+
+    def update_raw_info(self, processed_data: dict, raw_data: dict, timestamp: float):
+        """更新原始数据信息"""
+        if self.debug_panel:
+            self.debug_panel.update_data(raw_data, processed_data)
 
     def on_pause_clicked(self):
         """暂停按钮点击"""
@@ -619,7 +702,7 @@ class RealtimeInferenceDashboard(QMainWindow):
             self.pause_btn.setText("▶ 继续")
             self.status_bar.showMessage("已暂停")
             self.is_playing = False
-            self.set_plot_interaction(True)  # 暂停时启用拖动
+            self.set_plot_interaction(True)  # 暂停时可用拖动
 
     def reset_plot_ranges(self):
         """重置所有图表的范围和缩放"""
@@ -677,7 +760,7 @@ class RealtimeInferenceDashboard(QMainWindow):
 
         # 重置播放状态
         self.is_playing = False
-        self.set_plot_interaction(True)  # 重置后启用拖动
+        self.set_plot_interaction(True)  # 重置后可用拖动
 
         # 重置按钮状态
         self.start_btn.setEnabled(True)
@@ -841,7 +924,7 @@ class RealtimeInferenceDashboard(QMainWindow):
         self.is_playing = False
         self.data_stream.is_paused = False  # 添加：重置暂停状态
         self.data_stream.is_playing = False  # 添加：重置播放状态
-        self.set_plot_interaction(True)  # 完成后启用拖动
+        self.set_plot_interaction(True)  # 完成后可用拖动
         self.status_bar.showMessage("推理完成")
 
     def closeEvent(self, event):
@@ -850,3 +933,62 @@ class RealtimeInferenceDashboard(QMainWindow):
             self.worker.stop()
             self.worker.wait()
         event.accept()
+
+    def on_config_device_clicked(self):
+        """配置设备按钮点击"""
+        dialog = DeviceConfigDialog(self)
+        dialog.config_confirmed.connect(self.on_device_config_confirmed)
+        dialog.exec_()
+
+    def on_device_config_confirmed(self, config: dict):
+        """设备配置确认"""
+        self.custom_device_config = config
+
+        # 配置数据流管理器
+        success = self.data_stream.configure_custom_device(config)
+
+        if success:
+            self.use_custom_device = True
+            self.show_raw_panel = config.get('show_raw_data', False)
+
+            # 设置数据源
+            self.data_stream.set_source(True, True)  # use_device=True, use_custom=True
+
+            # 显示或隐藏原始数据面板
+            if self.show_raw_panel and self.debug_panel is None:
+                self.show_raw_panel_ui()
+
+            self.status_bar.showMessage(f"已加载自定义数据: {config.get('csv_path', 'Unknown')}")
+
+            # 更新UI状态
+            self.update_ui_for_custom_device()
+
+            # 可用开始按钮
+            self.start_btn.setEnabled(True)
+        else:
+            QMessageBox.warning(self, "错误", "配置设备失败")
+            self.use_custom_device = False
+
+    def show_raw_panel_ui(self):
+        """显示原始数据面板"""
+        if self.debug_panel is None:
+            self.debug_panel = DebugPanel()
+
+            # 创建一个可停靠的窗口
+            dock = QDockWidget("原始数据面板", self)
+            dock.setWidget(self.debug_panel)
+            self.addDockWidget(Qt.BottomDockWidgetArea, dock)
+
+    def update_ui_for_custom_device(self):
+        """更新UI以适应自定义设备模式"""
+        # 隐藏数据集相关控件
+        self.participant_combo.setVisible(False)
+        self.action_combo.setVisible(False)
+
+        # 显示设备状态
+        status = self.data_stream.get_custom_device_status()
+        if status:
+            info_text = f"模式: {status.get('mode', 'Unknown')}, "
+            info_text += f"侧面: {status.get('side', 'Unknown')}, "
+            info_text += f"帧数: {status.get('frame_count', 0)}"
+            self.status_bar.showMessage(info_text)

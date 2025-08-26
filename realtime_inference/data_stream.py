@@ -168,8 +168,14 @@ class DataStreamManager:
         self.config = config
         self.dataset_source = DatasetSource(config)
         self.device_source = DeviceSource(config)
+
+        # 添加自定义设备源
+        from devices.custom_device_source import CustomDeviceSource
+        self.custom_device_source = CustomDeviceSource(config)
+
         self.current_source = self.dataset_source
         self.use_device = False
+        self.use_custom_device = False  # 新增标志
 
         # 播放控制
         self.playback_speed = 1.0
@@ -177,10 +183,15 @@ class DataStreamManager:
         self.is_playing = False
         self.sampling_rate = 200  # Hz
 
-    def set_source(self, use_device: bool):
-        """切换数据源"""
+    def set_source(self, use_device: bool, use_custom: bool = False):
+        """切换数据源（修改后的版本）"""
         self.use_device = use_device
-        if use_device:
+        self.use_custom_device = use_custom
+
+        if use_device and use_custom:
+            self.current_source = self.custom_device_source
+            print("Switched to custom device source")
+        elif use_device:
             self.current_source = self.device_source
             print("Switched to device source")
         else:
@@ -230,6 +241,97 @@ class DataStreamManager:
             timestamp = frame_count / self.sampling_rate
 
             yield sensor_data, ground_truth, timestamp
+
+            frame_count += 1
+
+            # 控制播放速度
+            expected_time = start_time + frame_count * frame_interval
+            current_time = time.time()
+            if current_time < expected_time:
+                time.sleep(expected_time - current_time)
+
+    def configure_custom_device(self, config: dict) -> bool:
+        """
+        配置自定义设备源
+        Args:
+            config: 配置字典
+        Returns:
+            是否配置成功
+        """
+        if config['source_type'] == 'offline':
+            # 配置离线CSV模式
+            success = self.custom_device_source.load_csv_file(
+                config['csv_path'],
+                config.get('label_filter', None),
+                config.get('side', 'r')
+            )
+
+            if success:
+                # 设置预处理参数
+                self.custom_device_source.set_preprocessing_params(
+                    config.get('preprocessing', {})
+                )
+
+                # 启动数据流
+                self.custom_device_source.start_streaming()
+
+            return success
+
+        elif config['source_type'] == 'ros':
+            # 配置ROS模式
+            return self.custom_device_source.connect_ros(config.get('topic', '/exo_sensor_data'))
+
+        return False
+
+    def get_custom_device_status(self) -> dict:
+        """获取自定义设备状态"""
+        if hasattr(self, 'custom_device_source'):
+            return self.custom_device_source.get_status()
+        return {}
+
+    def stream_frames_with_debug(self):
+        """
+        流式输出数据帧（带调试信息）
+        专门用于自定义设备源
+        """
+        self.is_playing = True
+        frame_interval = 1.0 / (self.sampling_rate * self.playback_speed)
+        start_time = time.time()
+        frame_count = 0
+
+        while self.is_playing:
+            if self.is_paused:
+                time.sleep(0.01)
+                continue
+
+            # 根据源类型获取数据
+            if self.use_custom_device and hasattr(self.custom_device_source, 'get_next_frame_with_debug'):
+                # 获取带调试信息的数据
+                sensor_data, raw_data, debug_info = self.custom_device_source.get_next_frame_with_debug()
+
+                if sensor_data is None:
+                    # 检查是否结束
+                    if self.custom_device_source.is_finished():
+                        break
+                    else:
+                        # 等待数据
+                        time.sleep(0.001)
+                        continue
+
+                # 计算时间戳
+                timestamp = frame_count / self.sampling_rate
+
+                yield sensor_data, None, timestamp, raw_data, debug_info
+
+            else:
+                # 使用原始的stream_frames逻辑
+                sensor_data, ground_truth = self.current_source.get_next_frame()
+
+                if sensor_data is None:
+                    break
+
+                timestamp = frame_count / self.sampling_rate
+                yield sensor_data, ground_truth, timestamp, None, None
 
             frame_count += 1
 
