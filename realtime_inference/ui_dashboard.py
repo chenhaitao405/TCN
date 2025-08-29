@@ -43,6 +43,7 @@ class InferenceWorker(QThread):
 
                     # 执行推理
                     moments = self.inference_engine.process_frame(sensor_data)
+                    #TODO:调用ROS，发布moments
 
                     # 发送原始数据信号
                     self.raw_data_ready.emit(

@@ -10,7 +10,7 @@ import numpy as np
 from collections import deque
 from typing import Dict, List, Optional, Tuple
 import time
-
+from scipy import signal
 
 class InferenceEngine:
     """实时推理引擎，复用现有的模型加载和配置管理代码"""
@@ -62,6 +62,64 @@ class InferenceEngine:
         print(f"  - History window: {self.history_window}")
         print(f"  - Model delays: {self.model_delays}")
 
+        # 初始化巴特沃斯滤波器（用于motorVel）
+        if hasattr(self.config, 'vel_filter_cutoff'):
+            self.init_butterworth_filter(self.config.vel_filter_cutoff, self.config.vel_filter_sampling_rate)
+            print(f"已启用motorVel滤波器 (截止频率: {self.config.vel_filter_cutoff} Hz)")
+
+    def init_butterworth_filter(self, cutoff_freq: float, sampling_rate: float):
+        """
+        初始化巴特沃斯低通滤波器
+        Args:
+            cutoff_freq: 截止频率 (Hz)
+            sampling_rate: 采样率 (Hz)
+        """
+        # 计算归一化截止频率
+        nyquist = sampling_rate / 2
+        normalized_cutoff = cutoff_freq / nyquist
+
+        # 设计2阶巴特沃斯滤波器
+        self.filter_order = 2
+        self.b, self.a = signal.butter(self.filter_order, normalized_cutoff, btype='low', analog=False)
+
+        # 初始化滤波器状态
+        self.zi = signal.lfilter_zi(self.b, self.a)
+        self.filter_state = None
+
+        # 打印滤波器参数（调试用）
+        print(f"巴特沃斯滤波器参数:")
+        print(f"  - 截止频率: {cutoff_freq} Hz")
+        print(f"  - 采样率: {sampling_rate} Hz")
+        print(f"  - 归一化截止频率: {normalized_cutoff:.4f}")
+        print(f"  - 滤波器阶数: {self.filter_order}")
+
+    def reset_filter(self):
+        """重置滤波器状态"""
+        if self.enable_vel_filter:
+            self.filter_state = None
+
+    def filter_velocity(self, velocity: float) -> float:
+        """
+        对速度值进行滤波
+        Args:
+            velocity: 原始速度值
+        Returns:
+            滤波后的速度值
+        """
+        if not self.enable_vel_filter:
+            return velocity
+
+        # 如果滤波器状态未初始化，使用当前值初始化
+        if self.filter_state is None:
+            self.filter_state = self.zi * velocity
+
+        # 应用滤波
+        filtered_value, self.filter_state = signal.lfilter(
+            self.b, self.a, [velocity], zi=self.filter_state
+        )
+
+        return filtered_value[0]
+
     def process_frame(self, sensor_data: Dict[str, float]) -> Dict[str, float]:
         """
         处理单帧传感器数据
@@ -93,12 +151,16 @@ class InferenceEngine:
         for i, label_name in enumerate(self.label_names):
             # 获取最新的预测值（这是对past时刻的预测）
             moment_value = output[0, i, -1].item()
+            if hasattr(self.config, 'vel_filter_cutoff'):
+                moment_value = self.filter_velocity(moment_value)
             moments[label_name] = moment_value
 
         # 记录推理时间
         inference_time = (time.time() - start_time) * 1000  # 转换为毫秒
         self.inference_times.append(inference_time)
         self.last_inference_time = inference_time
+
+        
 
         return moments
 

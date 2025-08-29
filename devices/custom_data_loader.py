@@ -7,7 +7,7 @@ from typing import Optional, Dict, List, Tuple
 from collections import deque
 import threading
 import time
-
+from scipy import signal
 
 class CustomDataLoader:
     """从CSV文件加载自定义格式的数据"""
@@ -148,15 +148,23 @@ class CustomDataLoader:
 class DataPreprocessor:
     """数据预处理器，将自定义数据格式转换为官方格式"""
 
-    def __init__(self, config, side: str = 'r'):
+    def __init__(self, config, side: str = 'l',
+                 enable_vel_filter: bool = True,
+                 vel_filter_cutoff: float = 10.0,
+                 sampling_rate: float = 200.0):
         """
         初始化预处理器
         Args:
             config: 配置对象，包含input_names等信息
             side: 腿部侧面 ('r' 或 'l')
+            enable_vel_filter: 是否启用速度滤波
+            vel_filter_cutoff: 速度滤波器截止频率 (Hz)
+            sampling_rate: 数据采样率 (Hz)
         """
         self.config = config
         self.side = side
+        self.enable_vel_filter = enable_vel_filter
+        self.sampling_rate = sampling_rate
 
         # 获取官方数据格式的输入名称
         self.official_input_names = config.input_names
@@ -166,6 +174,64 @@ class DataPreprocessor:
 
         # 缺失传感器的默认值
         self.default_values = self.get_default_values()
+
+        # 初始化巴特沃斯滤波器（用于motorVel）
+        if self.enable_vel_filter:
+            self.init_butterworth_filter(vel_filter_cutoff, sampling_rate)
+            print(f"已启用motorVel滤波器 (截止频率: {vel_filter_cutoff} Hz)")
+
+    def init_butterworth_filter(self, cutoff_freq: float, sampling_rate: float):
+        """
+        初始化巴特沃斯低通滤波器
+        Args:
+            cutoff_freq: 截止频率 (Hz)
+            sampling_rate: 采样率 (Hz)
+        """
+        # 计算归一化截止频率
+        nyquist = sampling_rate / 2
+        normalized_cutoff = cutoff_freq / nyquist
+
+        # 设计2阶巴特沃斯滤波器
+        self.filter_order = 2
+        self.b, self.a = signal.butter(self.filter_order, normalized_cutoff, btype='low', analog=False)
+
+        # 初始化滤波器状态
+        self.zi = signal.lfilter_zi(self.b, self.a)
+        self.filter_state = None
+
+        # 打印滤波器参数（调试用）
+        print(f"巴特沃斯滤波器参数:")
+        print(f"  - 截止频率: {cutoff_freq} Hz")
+        print(f"  - 采样率: {sampling_rate} Hz")
+        print(f"  - 归一化截止频率: {normalized_cutoff:.4f}")
+        print(f"  - 滤波器阶数: {self.filter_order}")
+
+    def reset_filter(self):
+            """重置滤波器状态"""
+            if self.enable_vel_filter:
+                self.filter_state = None
+
+    def filter_velocity(self, velocity: float) -> float:
+            """
+            对速度值进行滤波
+            Args:
+                velocity: 原始速度值
+            Returns:
+                滤波后的速度值
+            """
+            if not self.enable_vel_filter:
+                return velocity
+
+            # 如果滤波器状态未初始化，使用当前值初始化
+            if self.filter_state is None:
+                self.filter_state = self.zi * velocity
+
+            # 应用滤波
+            filtered_value, self.filter_state = signal.lfilter(
+                self.b, self.a, [velocity], zi=self.filter_state
+            )
+
+            return filtered_value[0]
 
     def create_mapping(self):
         """创建自定义数据到官方格式的映射"""
@@ -269,6 +335,9 @@ class DataPreprocessor:
                 # 电机角度减180度
                 if custom_key == 'motorPos':
                     value -= 180
+
+                if custom_key == 'motorVel':
+                    value = self.filter_velocity(value)
 
                 # 左腿镜像处理（如果需要）
                 if self.side == 'l':
