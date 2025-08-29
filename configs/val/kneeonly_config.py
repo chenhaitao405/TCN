@@ -68,6 +68,7 @@ label_names = [ "knee_angle_*_moment"]
 # intentional model delay (in data points)
 model_delays = [10] # hip moment estimates are delayed by 50 ms
 
+
 # participant masses for normalizing insole forces.
 # - NOTE: This is a simplification. Detailed participant masses are provided in the readme of the corresponding dataset.
 participant_masses = {
@@ -96,3 +97,6 @@ participant_masses = {
 	"BT24": 77.79
 }
 
+vel_filter_cutof = 10.0,
+sampling_rate = 200.0
+input_rate = 100

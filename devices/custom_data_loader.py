@@ -338,6 +338,7 @@ class DataPreprocessor:
 
                 if custom_key == 'motorVel':
                     value = self.filter_velocity(value)
+                    value /= 2
 
                 # 左腿镜像处理（如果需要）
                 if self.side == 'l':

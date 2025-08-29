@@ -42,6 +42,7 @@ def motor_subscriber():
     rospy.spin()
 
 
+
 if __name__ == '__main__':
     try:
         motor_subscriber()

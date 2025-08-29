@@ -43,8 +43,6 @@ class InferenceWorker(QThread):
 
                     # 执行推理
                     moments = self.inference_engine.process_frame(sensor_data)
-                    #TODO:调用ROS，发布moments
-
                     # 发送原始数据信号
                     self.raw_data_ready.emit(
                         sensor_data,  # 处理后的数据
@@ -124,7 +122,7 @@ class RealtimeInferenceDashboard(QMainWindow):
 
         # 当前选择的传感器和关节
         self.current_sensor = self.inference_engine.input_names[0] if self.inference_engine.input_names else None
-        self.current_joints = self.inference_engine.label_names[:2] if self.inference_engine.label_names else []
+        self.current_joint = self.inference_engine.label_names[0] if self.inference_engine.label_names else None
 
         # 播放状态
         self.is_playing = False
@@ -171,7 +169,7 @@ class RealtimeInferenceDashboard(QMainWindow):
     def init_ui(self):
         """初始化UI界面"""
         self.setWindowTitle("外骨骼关节力矩实时推理系统")
-        self.setGeometry(100, 100, 1600, 900)
+        self.setGeometry(100, 100, 1400, 900)
 
         # 设置样式
         self.setStyleSheet("""
@@ -327,7 +325,7 @@ class RealtimeInferenceDashboard(QMainWindow):
     def create_charts(self):
         """创建图表区域"""
         widget = QWidget()
-        layout = QGridLayout()
+        layout = QHBoxLayout()
 
         # 设置pyqtgraph全局选项
         pg.setConfigOptions(antialias=True)
@@ -362,44 +360,44 @@ class RealtimeInferenceDashboard(QMainWindow):
         sensor_layout.addWidget(self.sensor_plot)
 
         sensor_group.setLayout(sensor_layout)
-        layout.addWidget(sensor_group, 0, 0)
+        layout.addWidget(sensor_group)
 
-        # 2. 第一个关节力矩图表
-        self.joint1_group = QGroupBox("关节力矩 1")
-        joint1_layout = QVBoxLayout()
+        # 2. 关节力矩图表
+        self.joint_group = QGroupBox("关节力矩")
+        joint_layout = QVBoxLayout()
 
-        # 关节选择下拉框1
-        joint1_select_layout = QHBoxLayout()
-        joint1_select_layout.addWidget(QLabel("选择关节:"))
-        self.joint1_combo = QComboBox()
-        self.joint1_combo.addItems(self.inference_engine.label_names)
+        # 关节选择下拉框
+        joint_select_layout = QHBoxLayout()
+        joint_select_layout.addWidget(QLabel("选择关节:"))
+        self.joint_combo = QComboBox()
+        self.joint_combo.addItems(self.inference_engine.label_names)
         if len(self.inference_engine.label_names) > 0:
-            self.joint1_combo.setCurrentIndex(0)
-        self.joint1_combo.currentTextChanged.connect(lambda: self.on_joint_changed(1))
-        joint1_select_layout.addWidget(self.joint1_combo)
-        joint1_select_layout.addStretch()
-        joint1_layout.addLayout(joint1_select_layout)
+            self.joint_combo.setCurrentIndex(0)
+        self.joint_combo.currentTextChanged.connect(self.on_joint_changed)
+        joint_select_layout.addWidget(self.joint_combo)
+        joint_select_layout.addStretch()
+        joint_layout.addLayout(joint_select_layout)
 
-        # 力矩图1
-        self.joint1_plot = pg.PlotWidget()
-        self.joint1_plot.setLabel('left', '力矩', units='Nm/kg')
-        self.joint1_plot.setLabel('bottom', '时间', units='s')
-        self.joint1_plot.showGrid(x=True, y=True, alpha=0.3)
-        self.joint1_plot.addLegend()
-        self.joint1_plot.setYRange(-2, 2)
+        # 力矩图
+        self.joint_plot = pg.PlotWidget()
+        self.joint_plot.setLabel('left', '力矩', units='Nm/kg')
+        self.joint_plot.setLabel('bottom', '时间', units='s')
+        self.joint_plot.showGrid(x=True, y=True, alpha=0.3)
+        self.joint_plot.addLegend()
+        self.joint_plot.setYRange(-2, 2)
 
         # 禁用右键菜单
-        self.joint1_plot.setMenuEnabled(False)
+        self.joint_plot.setMenuEnabled(False)
         # 设置初始交互模式
-        self.joint1_plot.setMouseEnabled(x=False, y=False)
+        self.joint_plot.setMouseEnabled(x=False, y=False)
 
-        self.joint1_pred_curve = self.joint1_plot.plot(pen=pg.mkPen('g', width=2), name="推理值")
-        self.joint1_truth_curve = self.joint1_plot.plot(pen=pg.mkPen('r', width=1, style=Qt.DashLine), name="真实值")
-        joint1_layout.addWidget(self.joint1_plot)
+        self.joint_pred_curve = self.joint_plot.plot(pen=pg.mkPen('g', width=2), name="推理值")
+        self.joint_truth_curve = self.joint_plot.plot(pen=pg.mkPen('r', width=1, style=Qt.DashLine), name="真实值")
+        joint_layout.addWidget(self.joint_plot)
 
         # 添加：R²分数显示标签
-        self.joint1_r2_label = QLabel("R² Score: --")
-        self.joint1_r2_label.setStyleSheet("""
+        self.joint_r2_label = QLabel("R² Score: --")
+        self.joint_r2_label.setStyleSheet("""
             QLabel {
                 font-size: 14px;
                 font-weight: bold;
@@ -408,63 +406,11 @@ class RealtimeInferenceDashboard(QMainWindow):
                 border-radius: 3px;
             }
         """)
-        joint1_layout.addWidget(self.joint1_r2_label)
-        self.r2_labels['joint1'] = self.joint1_r2_label
+        joint_layout.addWidget(self.joint_r2_label)
+        self.r2_labels['joint'] = self.joint_r2_label
 
-        self.joint1_group.setLayout(joint1_layout)
-        layout.addWidget(self.joint1_group, 0, 1)
-
-        # 3. 第二个关节力矩图表
-        self.joint2_group = QGroupBox("关节力矩 2")
-        joint2_layout = QVBoxLayout()
-
-        # 关节选择下拉框2
-        joint2_select_layout = QHBoxLayout()
-        joint2_select_layout.addWidget(QLabel("选择关节:"))
-        self.joint2_combo = QComboBox()
-        self.joint2_combo.addItems(self.inference_engine.label_names)
-        if len(self.inference_engine.label_names) > 1:
-            self.joint2_combo.setCurrentIndex(1)
-        elif len(self.inference_engine.label_names) > 0:
-            self.joint2_combo.setCurrentIndex(0)
-        self.joint2_combo.currentTextChanged.connect(lambda: self.on_joint_changed(2))
-        joint2_select_layout.addWidget(self.joint2_combo)
-        joint2_select_layout.addStretch()
-        joint2_layout.addLayout(joint2_select_layout)
-
-        # 力矩图2
-        self.joint2_plot = pg.PlotWidget()
-        self.joint2_plot.setLabel('left', '力矩', units='Nm/kg')
-        self.joint2_plot.setLabel('bottom', '时间', units='s')
-        self.joint2_plot.showGrid(x=True, y=True, alpha=0.3)
-        self.joint2_plot.addLegend()
-        self.joint2_plot.setYRange(-2, 2)
-
-        # 禁用右键菜单
-        self.joint2_plot.setMenuEnabled(False)
-        # 设置初始交互模式
-        self.joint2_plot.setMouseEnabled(x=False, y=False)
-
-        self.joint2_pred_curve = self.joint2_plot.plot(pen=pg.mkPen('g', width=2), name="推理值")
-        self.joint2_truth_curve = self.joint2_plot.plot(pen=pg.mkPen('r', width=1, style=Qt.DashLine), name="真实值")
-        joint2_layout.addWidget(self.joint2_plot)
-
-        # 添加：R²分数显示标签
-        self.joint2_r2_label = QLabel("R² Score: --")
-        self.joint2_r2_label.setStyleSheet("""
-            QLabel {
-                font-size: 14px;
-                font-weight: bold;
-                padding: 5px;
-                background-color: #f0f0f0;
-                border-radius: 3px;
-            }
-        """)
-        joint2_layout.addWidget(self.joint2_r2_label)
-        self.r2_labels['joint2'] = self.joint2_r2_label
-
-        self.joint2_group.setLayout(joint2_layout)
-        layout.addWidget(self.joint2_group, 0, 2)
+        self.joint_group.setLayout(joint_layout)
+        layout.addWidget(self.joint_group)
 
         widget.setLayout(layout)
         return widget
@@ -529,7 +475,7 @@ class RealtimeInferenceDashboard(QMainWindow):
         """
         # 播放时：禁用x轴拖动，但保留滚轮缩放
         # 暂停时：可用x轴拖动和滚轮缩放
-        for plot in [self.sensor_plot, self.joint1_plot, self.joint2_plot]:
+        for plot in [self.sensor_plot, self.joint_plot]:
             plot.setMouseEnabled(x=enable_pan, y=False)
             # 设置鼠标模式：PanMode表示左键拖拽，RectMode表示框选
             viewbox = plot.getViewBox()
@@ -548,8 +494,7 @@ class RealtimeInferenceDashboard(QMainWindow):
 
             # 设置所有图表的X轴范围
             self.sensor_plot.setXRange(x_min, x_max, padding=0)
-            self.joint1_plot.setXRange(x_min, x_max, padding=0)
-            self.joint2_plot.setXRange(x_min, x_max, padding=0)
+            self.joint_plot.setXRange(x_min, x_max, padding=0)
 
     def on_source_changed(self, index):
         """数据源切换（修改版）"""
@@ -628,18 +573,9 @@ class RealtimeInferenceDashboard(QMainWindow):
         """传感器选择改变"""
         self.current_sensor = sensor_name
 
-    def on_joint_changed(self, joint_num):
+    def on_joint_changed(self, joint_name):
         """关节选择改变"""
-        if joint_num == 1 and self.joint1_combo.currentText():
-            if len(self.current_joints) > 0:
-                self.current_joints[0] = self.joint1_combo.currentText()
-            else:
-                self.current_joints.append(self.joint1_combo.currentText())
-        elif joint_num == 2 and self.joint2_combo.currentText():
-            if len(self.current_joints) > 1:
-                self.current_joints[1] = self.joint2_combo.currentText()
-            elif len(self.current_joints) == 1:
-                self.current_joints.append(self.joint2_combo.currentText())
+        self.current_joint = joint_name
 
     def on_speed_changed(self, speed_text):
         """播放速度改变"""
@@ -708,30 +644,18 @@ class RealtimeInferenceDashboard(QMainWindow):
     def reset_plot_ranges(self):
         """重置所有图表的范围和缩放"""
         # 重置X轴范围到默认值
-        for plot in [self.sensor_plot, self.joint1_plot, self.joint2_plot]:
+        for plot in [self.sensor_plot, self.joint_plot]:
             plot.setXRange(0, 5, padding=0)  # 显示0-5秒
             plot.enableAutoRange(axis='y')  # Y轴自动范围
 
         # 清除所有曲线数据
         self.sensor_curve.setData([], [])
-        self.joint1_pred_curve.setData([], [])
-        self.joint1_truth_curve.setData([], [])
-        self.joint2_pred_curve.setData([], [])
-        self.joint2_truth_curve.setData([], [])
+        self.joint_pred_curve.setData([], [])
+        self.joint_truth_curve.setData([], [])
 
         # 重置R²标签
-        self.joint1_r2_label.setText("R² Score: --")
-        self.joint2_r2_label.setText("R² Score: --")
-        self.joint1_r2_label.setStyleSheet("""
-            QLabel {
-                font-size: 14px;
-                font-weight: bold;
-                padding: 5px;
-                background-color: #f0f0f0;
-                border-radius: 3px;
-            }
-        """)
-        self.joint2_r2_label.setStyleSheet("""
+        self.joint_r2_label.setText("R² Score: --")
+        self.joint_r2_label.setStyleSheet("""
             QLabel {
                 font-size: 14px;
                 font-weight: bold;
@@ -821,20 +745,19 @@ class RealtimeInferenceDashboard(QMainWindow):
             if sensor_data_list and len(time_list) == len(sensor_data_list):
                 self.sensor_curve.setData(time_list, sensor_data_list)
 
-            # 更新关节力矩图表1
-        if len(self.current_joints) > 0 and self.current_joints[0] in self.moment_buffers:
-            joint_name = self.current_joints[0]
-            joint_data = self.moment_buffers[joint_name]
-            time_data = self.moment_time_buffers[joint_name]
+        # 更新关节力矩图表
+        if self.current_joint and self.current_joint in self.moment_buffers:
+            joint_data = self.moment_buffers[self.current_joint]
+            time_data = self.moment_time_buffers[self.current_joint]
 
             if joint_data['predicted'] and time_data['predicted']:
-                self.joint1_pred_curve.setData(
+                self.joint_pred_curve.setData(
                     list(time_data['predicted']),
                     list(joint_data['predicted'])
                 )
 
             if joint_data['ground_truth'] and time_data['ground_truth']:
-                self.joint1_truth_curve.setData(
+                self.joint_truth_curve.setData(
                     list(time_data['ground_truth']),
                     list(joint_data['ground_truth'])
                 )
@@ -846,7 +769,7 @@ class RealtimeInferenceDashboard(QMainWindow):
                     time_data['ground_truth'], joint_data['ground_truth']
                 )
                 if r2 is not None:
-                    self.joint1_r2_label.setText(f"R² Score: {r2:.4f}")
+                    self.joint_r2_label.setText(f"R² Score: {r2:.4f}")
                     # 根据R²值设置颜色
                     if r2 >= 0.9:
                         color = "#4CAF50"  # 绿色
@@ -854,51 +777,7 @@ class RealtimeInferenceDashboard(QMainWindow):
                         color = "#FFA726"  # 橙色
                     else:
                         color = "#EF5350"  # 红色
-                    self.joint1_r2_label.setStyleSheet(f"""
-                         QLabel {{
-                             font-size: 14px;
-                             font-weight: bold;
-                             padding: 5px;
-                             background-color: {color};
-                             color: white;
-                             border-radius: 3px;
-                         }}
-                     """)
-
-            # 更新关节力矩图表2
-        if len(self.current_joints) > 1 and self.current_joints[1] in self.moment_buffers:
-            joint_name = self.current_joints[1]
-            joint_data = self.moment_buffers[joint_name]
-            time_data = self.moment_time_buffers[joint_name]
-
-            if joint_data['predicted'] and time_data['predicted']:
-                self.joint2_pred_curve.setData(
-                    list(time_data['predicted']),
-                    list(joint_data['predicted'])
-                )
-
-            if joint_data['ground_truth'] and time_data['ground_truth']:
-                self.joint2_truth_curve.setData(
-                    list(time_data['ground_truth']),
-                    list(joint_data['ground_truth'])
-                )
-
-            # 计算并更新R²分数（使用时间对齐的版本）
-            if len(joint_data['predicted']) > 10 and len(joint_data['ground_truth']) > 10:
-                r2 = self.calculate_r2_score_aligned(
-                    time_data['predicted'], joint_data['predicted'],
-                    time_data['ground_truth'], joint_data['ground_truth']
-                )
-                if r2 is not None:
-                    self.joint2_r2_label.setText(f"R² Score: {r2:.4f}")
-                    # 根据R²值设置颜色
-                    if r2 >= 0.9:
-                        color = "#4CAF50"  # 绿色
-                    elif r2 >= 0.7:
-                        color = "#FFA726"  # 橙色
-                    else:
-                        color = "#EF5350"  # 红色
-                    self.joint2_r2_label.setStyleSheet(f"""
+                    self.joint_r2_label.setStyleSheet(f"""
                          QLabel {{
                              font-size: 14px;
                              font-weight: bold;
@@ -912,6 +791,10 @@ class RealtimeInferenceDashboard(QMainWindow):
         # 更新进度条
         progress = self.data_stream.dataset_source.get_progress()
         self.progress_bar.setValue(int(progress))
+
+        # 如果正在播放，自动调整范围
+        if self.is_playing:
+            self.auto_range_plots()
 
     def update_status(self, status_text: str, performance_stats: Dict):
         """更新状态信息"""

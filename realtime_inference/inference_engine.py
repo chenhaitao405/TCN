@@ -48,9 +48,13 @@ class InferenceEngine:
 
         # 获取输入输出配置
         self.input_names = self.config.input_names
+        self.input_rate = self.config.input_rate
         self.label_names = self.config.label_names
         self.model_delays = self.config.model_delays if hasattr(self.config, 'model_delays') else [0] * len(
             self.label_names)
+
+        self.input_frames_needed = int(self.history_window * self.input_rate / 200)
+
 
         # 性能监控
         self.inference_times = deque(maxlen=100)
@@ -135,11 +139,18 @@ class InferenceEngine:
         self.data_buffer.append(frame_data)
 
         # 检查是否有足够的历史数据
-        if len(self.data_buffer) < self.history_window:
+        if len(self.data_buffer) < self.input_frames_needed:
             return {}
 
         # 准备输入张量 - shape: [1, features, time]
-        input_window = np.array(list(self.data_buffer))[-self.history_window:]
+        input_window = np.array(list(self.data_buffer))[-self.input_frames_needed:]
+        if self.input_rate != 200:
+            # 使用scipy的resample函数将数据重采样到200Hz（history_window帧）
+            input_window = signal.resample(input_window, self.history_window, axis=0)
+        else:
+            # 如果已经是200Hz，直接使用原始数据
+            input_window = np.array(list(self.data_buffer))[-self.history_window:]
+
         input_tensor = torch.tensor(input_window.T, dtype=torch.float32).unsqueeze(0).to(self.device)
 
         # 推理
@@ -159,8 +170,6 @@ class InferenceEngine:
         inference_time = (time.time() - start_time) * 1000  # 转换为毫秒
         self.inference_times.append(inference_time)
         self.last_inference_time = inference_time
-
-        
 
         return moments
 
