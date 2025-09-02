@@ -191,6 +191,7 @@ class InferenceWorker(QThread):
                     'gyro_y': msg.data[6],
                     'gyro_z': msg.data[7],
                     'moment': msg.data[8],  # 返回值（用于对比）
+
                     'label': int(msg.data[9]) if len(msg.data) > 9 else 0
                 }
 
