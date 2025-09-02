@@ -66,7 +66,7 @@ action_patterns = [
 label_names = [ "knee_angle_*_moment"]
 
 # intentional model delay (in data points)
-model_delays = [0] # hip moment estimates are delayed by 50 ms
+model_delays = [10] # hip moment estimates are delayed by 50 ms
 
 # participant masses for normalizing insole forces.
 # - NOTE: This is a simplification. Detailed participant masses are provided in the readme of the corresponding dataset.

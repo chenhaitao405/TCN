@@ -47,6 +47,7 @@ class PublishWorker(QThread):
         # 共享数据和线程锁
         self.moments_lock = threading.Lock()
         self.current_moments = {}
+        self.timestamp_sensor = 0 #传感器时间戳
         self.body_weight = 70.0
         self.num_joints = 0  # 关节数量
 
@@ -66,11 +67,12 @@ class PublishWorker(QThread):
                     queue_size=10
                 )
 
-    def update_moments(self, moments: dict, body_weight: float):
-        """更新力矩数据（线程安全）"""
+    def update_moments_with_timestamp(self, moments: dict, body_weight: float, timestamp_sensor: float):
+        """更新力矩数据和时间戳（线程安全）"""
         with self.moments_lock:
             self.current_moments = moments.copy()
             self.body_weight = body_weight
+            self.timestamp_sensor = timestamp_sensor
             if moments:
                 self.num_joints = len(moments)
 
@@ -91,10 +93,9 @@ class PublishWorker(QThread):
         )
 
         # 100Hz -> 10ms周期
-        publish_period = 0.01  # 10ms
+        rate = rospy.Rate(100)  # 使用设置的频率
 
         while self.is_running and not rospy.is_shutdown():
-            start_time = time.time()
 
             try:
                 msg = Float64MultiArray()
@@ -102,11 +103,17 @@ class PublishWorker(QThread):
                 with self.moments_lock:
                     if self.current_moments:
                         # 发送值 = 推理值 × 体重 × 0.2
-                        msg.data = [value * self.body_weight * 0.2
+                        moment_values = [value * self.body_weight * 0.2
                                     for value in self.current_moments.values()]
+
+                        # 将力矩值和时间戳打包在一起发送
+                        # 格式：[moment1, moment2, ..., momentN, timestamp_sensor, timestamp_publish]
+                        msg.data = moment_values + [
+                            self.timestamp_sensor  # 原始传感器时间戳
+                        ]
                     else:
-                        # 没有数据时发送零值
-                        msg.data = [0.0] * max(self.num_joints, 1)
+                        # 没有数据时发送零值 + 时间戳
+                        msg.data = [0.0] * max(self.num_joints, 1) + [0.0]
 
                 # 发布消息
                 if self.publisher:
@@ -121,14 +128,12 @@ class PublishWorker(QThread):
                     self.publish_count = 0
                     self.last_stats_time = current_time
 
+                rate.sleep()
+
             except Exception as e:
                 self.error_occurred.emit(f"发布错误: {str(e)}")
 
-            # 精确控制频率
-            elapsed = time.time() - start_time
-            sleep_time = publish_period - elapsed
-            if sleep_time > 0:
-                QThread.msleep(int(sleep_time * 1000))
+
 
     def stop(self):
         """停止线程"""
@@ -140,9 +145,11 @@ class PublishWorker(QThread):
 
 class InferenceWorker(QThread):
     """推理工作线程"""
-    data_ready = pyqtSignal(dict, dict, float, float)  # sensor_data, moments, timestamp, return_moment
+    # 修改信号定义，添加 timestamp_sensor 和 timestamp_back 参数
+    data_ready = pyqtSignal(dict, dict, float, float, float, float)  # sensor_data, moments, timestamp, return_moment, timestamp_sensor, timestamp_back
     status_update = pyqtSignal(dict)  # performance stats
     error_occurred = pyqtSignal(str)  # error message
+
 
     def __init__(self, config_path: str, side: str = 'r'):
         super().__init__()
@@ -191,12 +198,14 @@ class InferenceWorker(QThread):
                     'gyro_y': msg.data[6],
                     'gyro_z': msg.data[7],
                     'moment': msg.data[8],  # 返回值（用于对比）
-
-                    'label': int(msg.data[9]) if len(msg.data) > 9 else 0
+                    'timestamp_sensor': msg.data[9] if len(msg.data) > 9 else 0,
+                    'timestamp_back': msg.data[10] if len(msg.data) > 10 else 0,
                 }
 
                 # 保存返回值
-                return_moment = msg.data[8]
+                timestamp_sensor = raw_data['timestamp_sensor']
+                timestamp_back = raw_data['timestamp_back']
+                return_moment = raw_data['moment']
 
                 # 预处理数据 - 添加计时
                 preprocess_start = time.time()
@@ -207,6 +216,7 @@ class InferenceWorker(QThread):
                 # 执行推理 - 添加计时
                 inference_start = time.time()
                 moments = self.engine.process_frame(processed_data)
+
                 inference_end = time.time()
                 inference_time = (inference_end - inference_start) * 1000  # 转换为毫秒
 
@@ -226,8 +236,15 @@ class InferenceWorker(QThread):
                 # 计算相对时间（从开始推理到现在的秒数）
                 relative_time = current_timestamp - self.start_timestamp
 
-                # 发送数据信号，使用相对时间
-                self.data_ready.emit(processed_data, moments, relative_time, return_moment)
+                # 发送数据信号，使用相对时间（含对ros发布线程更新力矩）
+                self.data_ready.emit(
+                    processed_data,
+                    moments,
+                    relative_time,
+                    return_moment,
+                    timestamp_sensor,  # 传感器时间戳
+                    timestamp_back     # 返回时间戳
+                )
 
                 # 更新统计
                 self.frame_count += 1
@@ -314,6 +331,15 @@ class ROSInferenceUI(QMainWindow):
         self.receive_rate = 0
         self.publish_rate = 0
         self.frame_count = 0
+
+        # 时延统计
+        self.current_latency = 0.0  # 当前时延
+        self.latency_sum = 0.0  # 时延总和
+        self.latency_count = 0  # 时延计数
+        self.avg_latency = 0.0  # 平均时延
+        self.max_latency = 0.0  # 最大时延
+        self.min_latency = float('inf')  # 最小时延
+        self.first_return_received = False  # 标记是否收到第一个返回值
 
         # UI元素（会在init_ui中初始化）
         self.runtime_label = None
@@ -520,6 +546,21 @@ class ROSInferenceUI(QMainWindow):
 
         layout.addSpacing(30)
 
+        # 时延统计 - 新增部分
+        self.latency_label = QLabel("当前时延: -- ms")
+        self.latency_label.setStyleSheet("color: blue; font-weight: bold;")
+        layout.addWidget(self.latency_label)
+
+        self.avg_latency_label = QLabel("平均时延: -- ms")
+        self.avg_latency_label.setStyleSheet("color: green;")
+        layout.addWidget(self.avg_latency_label)
+
+        self.latency_range_label = QLabel("时延范围: -- ~ -- ms")
+        self.latency_range_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.latency_range_label)
+
+        layout.addSpacing(30)
+
         # 缓冲区进度条
         layout.addWidget(QLabel("缓冲区:"))
         self.buffer_progress = QProgressBar()
@@ -597,6 +638,19 @@ class ROSInferenceUI(QMainWindow):
         panel.setLayout(layout)
         return panel
 
+    def create_log_panel(self) -> QWidget:
+        """创建日志面板"""
+        panel = QGroupBox("系统日志")
+        layout = QVBoxLayout()
+
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(100)
+        layout.addWidget(self.log_text)
+
+        panel.setLayout(layout)
+        return panel
+
     def add_log(self, level: str, message: str):
         """添加日志信息"""
         timestamp = time.strftime("%H:%M:%S")
@@ -618,7 +672,7 @@ class ROSInferenceUI(QMainWindow):
         self.body_weight = value
         # 更新发布线程的体重值
         if self.publish_worker and self.current_moments:
-            self.publish_worker.update_moments(self.current_moments, self.body_weight)
+            self.publish_worker.update_moments_with_timestamp(self.current_moments, self.body_weight)
         self.add_log("INFO", f"体重更新为: {value} kg (影响发送值计算)")
         # 立即更新当前显示的发送值
         self.update_current_values()
@@ -659,6 +713,7 @@ class ROSInferenceUI(QMainWindow):
 
         if self.inference_worker is None:
             self.inference_worker = InferenceWorker(self.config_path, self.side)
+            # 连接信号时参数数量要匹配
             self.inference_worker.data_ready.connect(self.on_data_received)
             self.inference_worker.status_update.connect(self.on_status_update)
             self.inference_worker.error_occurred.connect(self.on_error)
@@ -728,6 +783,18 @@ class ROSInferenceUI(QMainWindow):
         if self.runtime_label:
             self.runtime_label.setText("运行时间: 0.0 s")
 
+        # 重置时延统计
+        self.current_latency = 0.0
+        self.latency_sum = 0.0
+        self.latency_count = 0
+        self.avg_latency = 0.0
+        self.max_latency = 0.0
+        self.min_latency = float('inf')
+        self.first_return_received = False  # 重置首次返回标志
+        self.latency_label.setText("当前时延: -- ms")
+        self.avg_latency_label.setText("平均时延: -- ms")
+        self.latency_range_label.setText("时延范围: -- ~ -- ms")
+
         # 更新UI状态
         self.start_inference_btn.setEnabled(True)
         self.pause_inference_btn.setEnabled(False)
@@ -752,7 +819,7 @@ class ROSInferenceUI(QMainWindow):
 
             # 如果有当前数据，立即更新
             if self.current_moments:
-                self.publish_worker.update_moments(self.current_moments, self.body_weight)
+                self.publish_worker.update_moments_with_timestamp(self.current_moments, self.body_weight)
 
         self.publish_worker.start()
         self.is_publishing = True
@@ -786,8 +853,39 @@ class ROSInferenceUI(QMainWindow):
         self.current_joint = joint_name
         self.update_plot()
 
-    def on_data_received(self, sensor_data: dict, moments: dict, relative_time: float, return_moment: float):
-        """接收到推理数据 - 包含推理值和返回值（使用相对时间）"""
+    def on_data_received(self, sensor_data: dict, moments: dict, relative_time: float,
+                         return_moment: float, timestamp_sensor: float, timestamp_back: float):
+        """接收到推理数据 - 包含时间戳
+        timestamp_sensor 当前传感器对应的时间戳
+        timestamp_back: 当前力矩对应推理时刻的时间戳
+        （时延 = timestamp_sensor-timestamp_back）
+        """
+        # 计算时延（转换为毫秒）
+        # 只有当 timestamp_back 不为0时才开始统计（刚启动时没有返回值）
+        if timestamp_sensor > 0 and timestamp_back > 0:
+            # 如果是第一次收到返回值，记录日志
+            if not self.first_return_received:
+                self.first_return_received = True
+                self.add_log("INFO", "开始接收返回值，时延统计已启动")
+
+            self.current_latency = (timestamp_sensor - timestamp_back) * 10  # 转换为毫秒
+
+            # 更新统计数据
+            self.latency_sum += self.current_latency
+            self.latency_count += 1
+            self.avg_latency = self.latency_sum / self.latency_count
+
+            # 更新最大最小值
+            self.max_latency = max(self.max_latency, self.current_latency)
+            self.min_latency = min(self.min_latency, self.current_latency)
+
+            # 更新时延显示
+            self.update_latency_display()
+        elif timestamp_back == 0:
+            # 刚启动时没有返回值，显示等待状态
+            self.latency_label.setText("当前时延: 等待返回...")
+            self.latency_label.setStyleSheet("color: gray; font-weight: bold;")
+
         # 更新时间缓存（relative_time已经是相对时间，单位：秒）
         self.time_buffer.append(relative_time)
 
@@ -802,9 +900,12 @@ class ROSInferenceUI(QMainWindow):
         self.current_moments = moments
         self.current_return_moment = return_moment
 
-        # 更新发布线程的力矩数据
         if self.publish_worker and self.is_publishing:
-            self.publish_worker.update_moments(moments, self.body_weight)
+            self.publish_worker.update_moments_with_timestamp(
+                moments,
+                self.body_weight,
+                timestamp_sensor  # 传递传感器时间戳
+            )
 
         # 更新界面
         self.update_plot()
@@ -889,6 +990,28 @@ class ROSInferenceUI(QMainWindow):
         self.inference_speed_label.setText(f"推理速度: {stats.get('avg_inference_time', 0):.2f} ms/帧")
         self.receive_rate_label.setText(f"接收帧率: {stats.get('receive_rate', 0):.1f} Hz")
         self.frame_count_label.setText(f"已处理帧数: {stats.get('frame_count', 0)}")
+
+    def update_latency_display(self):
+        """更新时延显示"""
+        # 当前时延
+        self.latency_label.setText(f"当前时延: {self.current_latency:.2f} ms")
+
+        # 平均时延
+        self.avg_latency_label.setText(f"平均时延: {self.avg_latency:.2f} ms")
+
+        # 时延范围
+        if self.min_latency != float('inf'):
+            self.latency_range_label.setText(f"时延范围: {self.min_latency:.2f} ~ {self.max_latency:.2f} ms")
+
+        # 根据时延大小改变颜色提示
+        if self.current_latency < 10:
+            self.latency_label.setStyleSheet("color: green; font-weight: bold;")
+        elif self.current_latency < 50:
+            self.latency_label.setStyleSheet("color: blue; font-weight: bold;")
+        elif self.current_latency < 100:
+            self.latency_label.setStyleSheet("color: orange; font-weight: bold;")
+        else:
+            self.latency_label.setStyleSheet("color: red; font-weight: bold;")
 
     def on_error(self, error_msg: str):
         """处理错误"""
