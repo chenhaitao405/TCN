@@ -263,7 +263,7 @@ class InferenceWorker(QThread):
 
         # 订阅传感器数据
         self.subscriber = rospy.Subscriber(
-            '/motor12_left',
+            '/exo_sensor_data',
             Float64MultiArray,
             sensor_callback,
             queue_size=10
@@ -310,7 +310,7 @@ class ROSInferenceUI(QMainWindow):
         self.body_weight = 70.0  # 默认体重
 
         # ROS相关
-        self.sub_topic = '/motor12_left'
+        self.sub_topic = '/exo_sensor_data'
         self.pub_topic = '/moment'
 
         # 工作线程
@@ -601,7 +601,7 @@ class ROSInferenceUI(QMainWindow):
         layout.addLayout(select_layout)
 
         # 设置pyqtgraph
-        pg.setConfigOptions(antialias=True)
+        pg.setConfigOptions(antialias=False)
 
         # 创建绘图控件
         self.plot_widget = pg.PlotWidget()
@@ -862,6 +862,27 @@ class ROSInferenceUI(QMainWindow):
         """
         # 计算时延（转换为毫秒）
         # 只有当 timestamp_back 不为0时才开始统计（刚启动时没有返回值）
+        # 更新时间缓存（relative_time已经是相对时间，单位：秒）
+        self.time_buffer.append(relative_time)
+
+        # 更新力矩缓存和返回值缓存
+        for joint_name, value in moments.items():
+            if joint_name in self.moment_buffers:
+                self.moment_buffers[joint_name].append(value)
+                # 为每个关节保存相同的返回值
+                self.return_moment_buffers[joint_name].append(return_moment)
+
+        # 保存当前力矩值和返回值
+        self.current_moments = moments
+        self.current_return_moment = return_moment
+
+        if self.publish_worker and self.is_publishing:
+            self.publish_worker.update_moments_with_timestamp(
+                moments,
+                self.body_weight,
+                timestamp_sensor  # 传递传感器时间戳
+            )
+
         if timestamp_sensor > 0 and timestamp_back > 0:
             # 如果是第一次收到返回值，记录日志
             if not self.first_return_received:
@@ -886,29 +907,8 @@ class ROSInferenceUI(QMainWindow):
             self.latency_label.setText("当前时延: 等待返回...")
             self.latency_label.setStyleSheet("color: gray; font-weight: bold;")
 
-        # 更新时间缓存（relative_time已经是相对时间，单位：秒）
-        self.time_buffer.append(relative_time)
-
-        # 更新力矩缓存和返回值缓存
-        for joint_name, value in moments.items():
-            if joint_name in self.moment_buffers:
-                self.moment_buffers[joint_name].append(value)
-                # 为每个关节保存相同的返回值
-                self.return_moment_buffers[joint_name].append(return_moment)
-
-        # 保存当前力矩值和返回值
-        self.current_moments = moments
-        self.current_return_moment = return_moment
-
-        if self.publish_worker and self.is_publishing:
-            self.publish_worker.update_moments_with_timestamp(
-                moments,
-                self.body_weight,
-                timestamp_sensor  # 传递传感器时间戳
-            )
-
         # 更新界面
-        self.update_plot()
+        # self.update_plot()
         self.update_current_values()
 
         # 更新运行时间显示

@@ -31,7 +31,7 @@ class ROSLatencyTester(QObject):
 
     stats_updated = pyqtSignal(dict)
 
-    def __init__(self, sub_topic='/motor12_left', pub_topic='/moment', num_joints=1):
+    def __init__(self, sub_topic='/exo_sensor_data', pub_topic='/moment', num_joints=1):
         super().__init__()
 
         # 配置参数

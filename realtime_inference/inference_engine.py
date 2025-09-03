@@ -140,6 +140,7 @@ class InferenceEngine:
 
         # 检查是否有足够的历史数据
         if len(self.data_buffer) < self.input_frames_needed:
+            print("skip infer")
             return {}
 
         # 准备输入张量 - shape: [1, features, time]
