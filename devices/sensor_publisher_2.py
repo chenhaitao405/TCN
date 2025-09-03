@@ -16,7 +16,7 @@ import threading
 
 
 class CSVDataPublisher:
-    def __init__(self, csv_path, label_filter=None, topic='/exo_sensor_data',
+    def __init__(self, csv_path, label_filter=None, topic='/motor12_left',
                  moment_topic='/moment', rate=200):
         """
         初始化CSV数据发布器
@@ -286,8 +286,8 @@ def main():
     parser.add_argument(
         '--topic',
         type=str,
-        default='/exo_sensor_data',
-        help='ROS topic name for publishing data (default: /exo_sensor_data)'
+        default='/motor12_left',
+        help='ROS topic name for publishing data (default: /motor12_left)'
     )
     parser.add_argument(
         '--moment-topic',

@@ -2,7 +2,7 @@ import os
 
 # relative file path to trained model
 task_name = "10Action_grokneeonly_thigh_p1p2"  #sensor_trainData_valData
-model_path = os.path.join("models", "p1+p2_finalmodel.tar")
+model_path = "checkpoints/train_10Action_grok_delayneeonly_thigh_p1p2_20250902_085911/best_model.tar"
 
 # relative path to data
 data_dirs = [
@@ -96,3 +96,6 @@ participant_masses = {
 	"BT24": 77.79
 }
 
+vel_filter_cutof = 10.0,
+sampling_rate = 200.0
+input_rate = 100

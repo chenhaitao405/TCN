@@ -11,7 +11,7 @@ data_dirs = [
 ]
 
 # corresponding leg (model is not dependent on side)
-side = ["r","l"]
+side = ["l"]
 
 
 # corresponding model input names in dataset (* is substituted with side)

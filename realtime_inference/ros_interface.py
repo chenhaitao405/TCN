@@ -263,7 +263,7 @@ class InferenceWorker(QThread):
 
         # 订阅传感器数据
         self.subscriber = rospy.Subscriber(
-            '/exo_sensor_data',
+            '/motor12_left',
             Float64MultiArray,
             sensor_callback,
             queue_size=10
@@ -310,7 +310,7 @@ class ROSInferenceUI(QMainWindow):
         self.body_weight = 70.0  # 默认体重
 
         # ROS相关
-        self.sub_topic = '/exo_sensor_data'
+        self.sub_topic = '/motor12_left'
         self.pub_topic = '/moment'
 
         # 工作线程
@@ -343,6 +343,12 @@ class ROSInferenceUI(QMainWindow):
 
         # UI元素（会在init_ui中初始化）
         self.runtime_label = None
+
+        # 绘图节流相关
+        self.plot_fps = 30  # 目标刷新率，20~50 之间都可以；示例用 30Hz
+        self._plot_dirty = False  # 是否有新数据需要画
+        self._last_axis_update = 0.0  # 上次坐标轴更新的时间点
+        self._axis_update_interval = 0.25  # 坐标轴 250ms 更新一次，避免每帧重算
 
         # 初始化UI
         self.init_ui()
@@ -399,6 +405,13 @@ class ROSInferenceUI(QMainWindow):
         main_layout.addWidget(self.create_performance_panel())
         main_layout.addWidget(self.create_plot_panel(), stretch=1)
         main_layout.addWidget(self.create_log_panel())
+
+        # 启动绘图节流定时器
+        self.plot_timer = QTimer(self)
+        self.plot_timer.setTimerType(Qt.PreciseTimer)  # 更精确的定时
+        self.plot_timer.setInterval(int(1000 / self.plot_fps))  # 例如 33ms ≈ 30Hz
+        self.plot_timer.timeout.connect(self._on_plot_timer)
+        self.plot_timer.start()
 
         # 创建状态栏
         self.status_bar = self.statusBar()
@@ -851,7 +864,7 @@ class ROSInferenceUI(QMainWindow):
     def on_joint_changed(self, joint_name: str):
         """关节选择改变"""
         self.current_joint = joint_name
-        self.update_plot()
+        self._plot_dirty = True
 
     def on_data_received(self, sensor_data: dict, moments: dict, relative_time: float,
                          return_moment: float, timestamp_sensor: float, timestamp_back: float):
@@ -900,72 +913,77 @@ class ROSInferenceUI(QMainWindow):
             self.max_latency = max(self.max_latency, self.current_latency)
             self.min_latency = min(self.min_latency, self.current_latency)
 
-            # 更新时延显示
-            self.update_latency_display()
-        elif timestamp_back == 0:
-            # 刚启动时没有返回值，显示等待状态
-            self.latency_label.setText("当前时延: 等待返回...")
-            self.latency_label.setStyleSheet("color: gray; font-weight: bold;")
-
-        # 更新界面
-        # self.update_plot()
-        self.update_current_values()
-
         # 更新运行时间显示
         if self.runtime_label:
             self.runtime_label.setText(f"运行时间: {relative_time:.1f} s")
 
-        # 更新缓冲区进度
-        buffer_usage = len(self.time_buffer) * 100 // self.plot_buffer_size
-        self.buffer_progress.setValue(buffer_usage)
+        # 更新界面
+        self._plot_dirty = True
+
 
     def on_publish_rate_update(self, rate: float):
         """更新发布频率显示"""
         self.publish_rate_label.setText(f"发送帧率: {rate:.1f} Hz")
 
+    def _on_plot_timer(self):
+        # 仅在有新数据时才刷新；并且仅推理进行中才画，避免空转
+        if self._plot_dirty and self.is_inferencing:
+            self.update_plot()
+            self._plot_dirty = False
+
     def update_plot(self):
         """更新绘图 - 显示发送值和返回值"""
         if not self.current_joint or not self.time_buffer:
             return
-
         if self.current_joint not in self.moment_buffers:
             return
 
+        # 取出原始缓冲
         times = list(self.time_buffer)
         values = list(self.moment_buffers[self.current_joint])
         return_values = list(self.return_moment_buffers[self.current_joint])
 
-        if len(times) != len(values) or len(times) != len(return_values):
+        # ——关键修改：按共同长度对齐末尾，避免长度不等直接 return——
+        n = min(len(times), len(values), len(return_values))
+        if n < 2:
             return
+        times = times[-n:]
+        values = values[-n:]
+        return_values = return_values[-n:]
 
         # 发送值（推理值 × 体重 × 0.2）
         send_values = [v * self.body_weight * 0.2 for v in values]
         self.moment_curve.setData(times, send_values)
-
-        # 返回值
         self.return_moment_curve.setData(times, return_values)
 
-        # 自动调整X轴范围（显示最近10秒的数据）
-        if times:
-            current_time = times[-1]
-            window_size = 10.0  # 显示窗口大小（秒）
-            self.plot_widget.setXRange(max(0, current_time - window_size), current_time + 0.5)
+        # X 轴（显示最近 10 秒）
+        current_time = times[-1]
+        window_size = 10.0
+        self.plot_widget.setXRange(max(0, current_time - window_size), current_time + 0.5)
 
-        # 自动调整Y轴范围
-        if send_values and return_values:
-            all_values = send_values + return_values
-            # 过滤掉可能的异常值
-            valid_values = [v for v in all_values if abs(v) < 1000]
-            if valid_values:
-                y_min = min(valid_values) - abs(min(valid_values)) * 0.1
-                y_max = max(valid_values) + abs(max(valid_values)) * 0.1
-                # 确保Y轴范围不会太小
-                y_range = y_max - y_min
-                if y_range < 1.0:
-                    y_center = (y_max + y_min) / 2
-                    y_min = y_center - 0.5
-                    y_max = y_center + 0.5
-                self.plot_widget.setYRange(y_min, y_max)
+        # Y 轴（带简单异常值过滤）
+        all_values = send_values + return_values
+        valid_values = [v for v in all_values if abs(v) < 1000]
+        if valid_values:
+            y_min = min(valid_values);
+            y_max = max(valid_values)
+            pad = 0.1 * max(abs(y_min), abs(y_max))
+            if (y_max - y_min) < 1.0:
+                mid = 0.5 * (y_max + y_min)
+                y_min, y_max = mid - 0.5, mid + 0.5
+            else:
+                y_min, y_max = y_min - pad, y_max + pad
+            self.plot_widget.setYRange(y_min, y_max)
+
+        #更新参数显示
+        self.update_current_values()
+        # 更新时延显示
+        self.update_latency_display()
+        # 更新缓冲区进度
+        buffer_usage = len(self.time_buffer) * 100 // self.plot_buffer_size
+        self.buffer_progress.setValue(buffer_usage)
+
+
 
     def update_current_values(self):
         """更新当前值显示 - 显示发送值和返回值"""
