@@ -1,17 +1,17 @@
 import os
 
 # relative file path to trained model
-task_name = "10Action_grokneeonly_thigh_p1p2"  #sensor_trainData_valData
-model_path = "checkpoints/train_10Action_grok_delayneeonly_thigh_p1p2_20250902_085911/best_model.tar"
+task_name = "10Action_shufflekneeonly_thigh_p1p2"  #sensor_trainData_valData
+model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
 data_dirs = [
-    # "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    # "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
 ]
 
 # corresponding leg (model is not dependent on side)
-side = ["l"]
+side = ["r","l"]
 
 
 # corresponding model input names in dataset (* is substituted with side)
@@ -25,15 +25,15 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 				"hip_angle_*", "hip_angle_*_velocity_filt",#21
 				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
 
-sensor_pick = [12,13,14,23,24,]
+sensor_pick = [12,13,14,15,16,17,23,24,]
 
 action_patterns = [
 	# === 按论文中重要性排序的动作筛选 ===
 	# r"^normal_walk_.*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差）
-	r"^normal_walk_.*_(1-2|1-8|2-0|2-5|skip).*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差,排除）
+	r"^normal_walk_.*_(shuffle|0-6|1-2|1-8|2-0|2-5|skip).*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差,排除）
 	r"^poses_.*",  # 2. Standing poses
 	# r"^dynamic_walk_.*(high-knees|butt-kicks).*",  # 3. Calisthenics (high-knees, butt-kicks)
-	r"^push_.*",  # 4. Push and pull recovery
+	# r"^push_.*",  # 4. Push and pull recovery
 	r"^jump_.*_(hop|vertical).*",  # 5. Jump in place
 	r"^turn_and_step_.*",  # 6. Turn
 	r"^cutting_.*",  # 7. Cut
@@ -96,7 +96,3 @@ participant_masses = {
 	"BT24": 77.79
 }
 
-vel_filter_cutoff = 10.0
-sampling_rate = 200.0
-vel_filter_sampling_rate = 200.0
-input_rate = 100

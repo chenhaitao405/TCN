@@ -46,6 +46,11 @@ class InferenceEngine:
         self.buffer_size = self.history_window + 500  # 额外缓冲
         self.data_buffer = deque(maxlen=self.buffer_size)
 
+
+        self.enable_vel_filter = False
+        if hasattr(self.config, 'vel_filter_cutoff'):
+            self.enable_vel_filter = True
+
         # 获取输入输出配置
         self.input_names = self.config.input_names
         self.input_rate = self.config.input_rate
@@ -163,7 +168,7 @@ class InferenceEngine:
         for i, label_name in enumerate(self.label_names):
             # 获取最新的预测值（这是对past时刻的预测）
             moment_value = output[0, i, -1].item()
-            if hasattr(self.config, 'vel_filter_cutoff'):
+            if self.enable_vel_filter:
                 moment_value = self.filter_velocity(moment_value)
             moments[label_name] = moment_value
 

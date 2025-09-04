@@ -1,13 +1,13 @@
 import os
 
 # relative file path to trained model
-task_name = "10Action_nodelaykneeonly_thigh_p1p2"  #sensor_trainData_valData
+task_name = "010Action_nodelaykneeonly_thigh_p1p2"  #sensor_trainData_valData
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 # relative path to data
 data_dirs = [
     # "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+    "/home/num2/datasets/EXO/Phase3_Parsed/test"
 ]
 
 # corresponding leg (model is not dependent on side)

@@ -9,7 +9,6 @@ import os
 import time
 import argparse
 from collections import deque
-from typing import Dict, Optional
 import threading
 
 # ROS imports
@@ -19,9 +18,8 @@ from std_msgs.msg import Float64MultiArray
 # PyQt5 imports
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
-from PyQt5.QtGui import *
 import pyqtgraph as pg
-import numpy as np
+
 
 import warnings
 
@@ -132,8 +130,6 @@ class PublishWorker(QThread):
 
             except Exception as e:
                 self.error_occurred.emit(f"发布错误: {str(e)}")
-
-
 
     def stop(self):
         """停止线程"""

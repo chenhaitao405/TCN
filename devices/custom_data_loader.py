@@ -2,11 +2,7 @@
 自定义数据加载器，用于读取和处理自定义格式的离线数据
 """
 import pandas as pd
-import numpy as np
-from typing import Optional, Dict, List, Tuple
-from collections import deque
-import threading
-import time
+from typing import Optional, Dict
 from scipy import signal
 
 class CustomDataLoader:
@@ -337,8 +333,12 @@ class DataPreprocessor:
                     value -= 180
 
                 if custom_key == 'motorVel':
-                    value = self.filter_velocity(value)
                     value /= 2
+                    value = self.filter_velocity(value)
+
+                # if custom_key == 'acc_x' or custom_key == 'acc_y'or custom_key == 'acc_z':  # 匹配所有加速度相关的键
+                #     value = self.filter_velocity(value)
+
 
                 # 左腿镜像处理（如果需要）
                 if self.side == 'l':
