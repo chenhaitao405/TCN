@@ -270,15 +270,61 @@ def main():
     print("\nModel loaded successfully!")
     # print(f"Model architecture: {model}")
 
+    # 根据配置选择划分模式
+    split_mode = getattr(config, 'split_mode', 'random')
+    print(f"\nUsing split mode: {split_mode}")
+
     # Prepare data
     data_manager = DataManager()
-    full_dataset = data_manager.load_datasets(config, device)
-    train_dataset, val_dataset = data_manager.create_train_val_split(
-        full_dataset, config, args.val_split
-    )
-    train_loader, val_loader = data_manager.create_dataloaders(
-        train_dataset, val_dataset, args.batch_size, device
-    )
+    if split_mode == 'manual':
+        # 使用手动划分（按目录）
+        if not hasattr(config, 'train_data_dirs') or not hasattr(config, 'val_dataset'):
+            raise ValueError("Manual split mode requires 'train_data_dirs' and 'val_dataset' in config")
+
+        train_dataset, val_dataset = data_manager.create_manual_split(
+            config=config,
+            device=device,
+            max_samples=args.max_samples if hasattr(args, 'max_samples') else None
+        )
+
+        # 创建数据加载器
+        train_loader, val_loader = data_manager.create_dataloaders(
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            batch_size=args.batch_size,
+            device=device
+        )
+
+        print(f"\nManual split completed:")
+        print(f"  Training batches: {len(val_dataset)}")
+        print(f"  Test batches: {len(val_dataset)}")
+
+    else:  # random split
+        # 使用随机划分（向后兼容）
+        full_dataset = data_manager.load_datasets(config, device)
+
+        # 获取验证集比例
+        val_split = getattr(config, 'val_split', args.val_split if hasattr(args, 'val_split') else 0.1)
+
+        train_dataset, val_dataset = data_manager.create_train_val_split(
+            full_dataset=full_dataset,
+            config=config,
+            val_split=val_split,
+            max_samples=args.max_samples if hasattr(args, 'max_samples') else None
+        )
+
+        # 创建数据加载器
+        train_loader, val_loader = data_manager.create_dataloaders(
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            batch_size=args.batch_size,
+            device=device
+        )
+
+        print(f"\nRandom split completed:")
+        print(f"  Training batches: {len(train_loader)}")
+        print(f"  Validation batches: {len(val_loader)}")
+
 
     # Initialize optimizer, scheduler, and loss
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)

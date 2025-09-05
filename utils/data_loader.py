@@ -18,10 +18,21 @@ class DataManager:
     @staticmethod
     def load_datasets(
         config: Any,
-        device: torch.device
+        device: torch.device,
+        data_dirs: Optional[List[str]] = None
     ) -> ConcatDataset:
-        """Load all datasets from configured paths."""
+        """Load all datasets from configured paths.
+
+        Args:
+            config: Configuration object
+            device: Device to load data to
+            data_dirs: Optional override for data directories. If None, uses config.data_dirs
+        """
         print("Loading dataset...")
+
+        # Use provided data_dirs or fall back to config.data_dirs
+        if data_dirs is None:
+            data_dirs = config.data_dirs
 
         action_patterns = getattr(config, 'action_patterns', None)
         if action_patterns:
@@ -29,7 +40,7 @@ class DataManager:
 
         datasets = []
         sides = config.side if isinstance(config.side, list) else [config.side]
-        for data_dir in config.data_dirs:
+        for data_dir in data_dirs:
             for side in sides:
                 dataset = TcnDataset(
                     data_dir=data_dir,
@@ -52,9 +63,17 @@ class DataManager:
     def get_or_compute_valid_indices(
             full_dataset: ConcatDataset,
             config: Any,
-            cache_dir: str = 'cache'
+            cache_dir: str = 'cache',
+            cache_suffix: str = ''
     ) -> List[int]:
-        """Get or compute valid indices (non-NaN samples) with caching."""
+        """Get or compute valid indices (non-NaN samples) with caching.
+
+        Args:
+            full_dataset: The full dataset to validate
+            config: Configuration object
+            cache_dir: Directory for cache files
+            cache_suffix: Additional suffix for cache file naming
+        """
         os.makedirs(cache_dir, exist_ok=True)
 
         if isinstance(config.side, list):
@@ -66,7 +85,8 @@ class DataManager:
         if hasattr(config, 'action_patterns') and config.action_patterns:
             action_str = hashlib.md5(str(config.action_patterns).encode()).hexdigest()[:8]
 
-        cache_key = str(config.data_dirs) + str(config.input_names) + side_str + action_str
+        # Add cache suffix to differentiate train/test caches
+        cache_key = str(getattr(config, 'data_dirs', '')) + str(config.input_names) + side_str + action_str + cache_suffix
         cache_hash = hashlib.md5(cache_key.encode()).hexdigest()[:8]
         cache_path = os.path.join(cache_dir, f'valid_indices_{cache_hash}.json')
 
@@ -122,7 +142,7 @@ class DataManager:
         val_split: float = 0.1,
         max_samples: Optional[int] = None
     ) -> Tuple[Subset, Subset]:
-        """Create train/validation split from dataset."""
+        """Create train/validation split from dataset using random split."""
         valid_indices = DataManager.get_or_compute_valid_indices(full_dataset, config)
 
         if max_samples and len(valid_indices) > max_samples:
@@ -135,9 +155,63 @@ class DataManager:
         train_size = len(filtered_dataset) - val_size
         train_dataset, val_dataset = random_split(filtered_dataset, [train_size, val_size])
 
-        print(f"Dataset split: {train_size} train, {val_size} validation")
+        print(f"Dataset split (random): {train_size} train, {val_size} validation")
 
         return train_dataset, val_dataset
+
+    @staticmethod
+    def create_manual_split(
+        config: Any,
+        device: torch.device,
+        max_samples: Optional[int] = None
+    ) -> Tuple[Subset, Subset]:
+        """Create train/test split from dataset using manual directory-based splitting.
+
+        Args:
+            config: Configuration object containing train_data_dirs and val_dataset
+            device: Device to load data to
+            max_samples: Optional maximum number of samples per dataset
+
+        Returns:
+            Tuple of (train_dataset, test_dataset)
+        """
+        print("=" * 50)
+        print("Creating manual train/test split by directories")
+        print("=" * 50)
+
+        # Load training dataset
+        print("\n[Training Dataset]")
+        train_full_dataset = DataManager.load_datasets(config, device, config.train_data_dirs)
+        train_valid_indices = DataManager.get_or_compute_valid_indices(
+            train_full_dataset, config, cache_suffix='_train'
+        )
+
+        if max_samples and len(train_valid_indices) > max_samples:
+            train_valid_indices = train_valid_indices[:max_samples]
+            print(f"Limited training set to {max_samples} samples")
+
+        train_dataset = Subset(train_full_dataset, train_valid_indices)
+
+        # Load test dataset
+        print("\n[Test Dataset]")
+        test_full_dataset = DataManager.load_datasets(config, device, config.val_dataset)
+        test_valid_indices = DataManager.get_or_compute_valid_indices(
+            test_full_dataset, config, cache_suffix='_test'
+        )
+
+        if max_samples and len(test_valid_indices) > max_samples:
+            test_valid_indices = test_valid_indices[:max_samples]
+            print(f"Limited test set to {max_samples} samples")
+
+        test_dataset = Subset(test_full_dataset, test_valid_indices)
+
+        print("\n" + "=" * 50)
+        print(f"Final dataset split (manual):")
+        print(f"  - Training: {len(train_dataset)} trials from {len(config.train_data_dirs)} directories")
+        print(f"  - Testing:  {len(test_dataset)} trials from {len(config.val_dataset)} directories")
+        print("=" * 50 + "\n")
+
+        return train_dataset, test_dataset
 
     @staticmethod
     def create_dataloaders(
@@ -146,7 +220,7 @@ class DataManager:
         batch_size: int,
         device: torch.device
     ) -> Tuple[DataLoader, DataLoader]:
-        """Create DataLoaders for training and validation."""
+        """Create DataLoaders for training and validation/test."""
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,

@@ -1,17 +1,36 @@
 import os
 
 # relative file path to trained model
-task_name = "10Action_shufflekneeonly_thigh_p1p2"  #sensor_trainData_valData
-model_path = "checkpoints/train_10Action_shufflekneeonly_thigh_p1p2_20250904_163608/best_model.tar"
+task_name = "manual_shufflekneeonly_thigh_p1p2"  #sensor_trainData_valData
+model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
-# relative path to data
-data_dirs = [
-    # "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-     "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+# ========== 数据集划分配置 ==========
+# split_mode: "manual" 使用手动划分（按目录）, "random" 使用随机划分
+split_mode = "manual"  # or "random"
+
+# 手动划分时使用的训练和测试数据目录
+train_data_dirs = [
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    # 可以添加更多训练目录
 ]
 
+val_dataset = [
+    "/home/num2/datasets/EXO/Phase3_Parsed/val",
+    # 可以添加更多测试目录
+]
+
+# 随机划分时使用的数据目录（保留向后兼容）
+data_dirs = [
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+]
+
+# 验证集比例（仅在random模式下使用）
+val_split = 0.1
+
+
 # corresponding leg (model is not dependent on side)
-side = ["l"]
+side = ["r","l"]
 
 
 # corresponding model input names in dataset (* is substituted with side)
@@ -96,7 +115,3 @@ participant_masses = {
 	"BT24": 77.79
 }
 
-# vel_filter_cutoff = 10.0
-# sampling_rate = 200.0
-# vel_filter_sampling_rate = 200.0
-# input_rate = 100
