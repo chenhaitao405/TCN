@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import DataLoader, ConcatDataset, Subset, random_split
 from typing import List, Tuple, Any, Optional
 from utils.TCNdataset import TcnDataset
+from utils.TCNdatasetSlidingWindow import TcnDatasetSlidingWindow
 import os
 import json
 import hashlib
@@ -19,7 +20,8 @@ class DataManager:
     def load_datasets(
         config: Any,
         device: torch.device,
-        data_dirs: Optional[List[str]] = None
+        data_dirs: Optional[List[str]] = None,
+        use_sliding_window: bool = False
     ) -> ConcatDataset:
         """Load all datasets from configured paths.
 
@@ -27,6 +29,7 @@ class DataManager:
             config: Configuration object
             device: Device to load data to
             data_dirs: Optional override for data directories. If None, uses config.data_dirs
+            use_sliding_window: Whether to use sliding window dataset for training
         """
         print("Loading dataset...")
 
@@ -40,22 +43,51 @@ class DataManager:
 
         datasets = []
         sides = config.side if isinstance(config.side, list) else [config.side]
+
+        # Choose dataset class based on mode
+        if use_sliding_window:
+            window_size = getattr(config, 'window_size', 280)
+            window_stride = getattr(config, 'window_stride', 10)
+            print(f"Using sliding window mode: size={window_size}, stride={window_stride}")
+            DatasetClass = TcnDatasetSlidingWindow
+        else:
+            DatasetClass = TcnDataset
+
         for data_dir in data_dirs:
             for side in sides:
-                dataset = TcnDataset(
-                    data_dir=data_dir,
-                    input_names=[name.replace("*", side) for name in config.input_names],
-                    label_names=[name.replace("*", side) for name in config.label_names],
-                    side=side,
-                    participant_masses=config.participant_masses,
-                    action_patterns=action_patterns,
-                    device=device
-                )
+                if use_sliding_window:
+                    dataset = DatasetClass(
+                        data_dir=data_dir,
+                        input_names=[name.replace("*", side) for name in config.input_names],
+                        label_names=[name.replace("*", side) for name in config.label_names],
+                        side=side,
+                        window_size=window_size,
+                        window_stride=window_stride,
+                        participant_masses=config.participant_masses,
+                        action_patterns=action_patterns,
+                        device=device
+                    )
+                else:
+                    dataset = DatasetClass(
+                        data_dir=data_dir,
+                        input_names=[name.replace("*", side) for name in config.input_names],
+                        label_names=[name.replace("*", side) for name in config.label_names],
+                        side=side,
+                        participant_masses=config.participant_masses,
+                        action_patterns=action_patterns,
+                        device=device
+                    )
                 datasets.append(dataset)
-                print(f"  - Loaded {len(dataset)} trials from {data_dir} (side: {side})")
+                if use_sliding_window:
+                    print(f"  - Loaded {len(dataset)} windows from {data_dir} (side: {side})")
+                else:
+                    print(f"  - Loaded {len(dataset)} trials from {data_dir} (side: {side})")
 
         full_dataset = ConcatDataset(datasets)
-        print(f"Total dataset size: {len(full_dataset)} trials")
+        if use_sliding_window:
+            print(f"Total dataset size: {len(full_dataset)} windows")
+        else:
+            print(f"Total dataset size: {len(full_dataset)} trials")
 
         return full_dataset
 
@@ -67,6 +99,9 @@ class DataManager:
             cache_suffix: str = ''
     ) -> List[int]:
         """Get or compute valid indices (non-NaN samples) with caching.
+
+        Note: For sliding window datasets, this is typically not needed as
+        window validation is done during window index creation.
 
         Args:
             full_dataset: The full dataset to validate
@@ -140,22 +175,38 @@ class DataManager:
         full_dataset: ConcatDataset,
         config: Any,
         val_split: float = 0.1,
-        max_samples: Optional[int] = None
+        max_samples: Optional[int] = None,
+        use_sliding_window: bool = False
     ) -> Tuple[Subset, Subset]:
         """Create train/validation split from dataset using random split."""
-        valid_indices = DataManager.get_or_compute_valid_indices(full_dataset, config)
 
-        if max_samples and len(valid_indices) > max_samples:
-            valid_indices = valid_indices[:max_samples]
-            print(f"Limited to {max_samples} samples")
+        # For sliding window datasets, indices are already valid (NaN-free)
+        if use_sliding_window:
+            total_windows = len(full_dataset)
+            if max_samples and total_windows > max_samples:
+                indices = list(range(max_samples))
+                print(f"Limited to {max_samples} windows")
+            else:
+                indices = list(range(total_windows))
 
-        filtered_dataset = Subset(full_dataset, valid_indices)
+            # Create subset with all valid windows
+            filtered_dataset = Subset(full_dataset, indices)
+        else:
+            # Original logic for trial-based dataset
+            valid_indices = DataManager.get_or_compute_valid_indices(full_dataset, config)
+
+            if max_samples and len(valid_indices) > max_samples:
+                valid_indices = valid_indices[:max_samples]
+                print(f"Limited to {max_samples} samples")
+
+            filtered_dataset = Subset(full_dataset, valid_indices)
 
         val_size = int(len(filtered_dataset) * val_split)
         train_size = len(filtered_dataset) - val_size
         train_dataset, val_dataset = random_split(filtered_dataset, [train_size, val_size])
 
-        print(f"Dataset split (random): {train_size} train, {val_size} validation")
+        dataset_type = "windows" if use_sliding_window else "trials"
+        print(f"Dataset split (random): {train_size} train {dataset_type}, {val_size} validation {dataset_type}")
 
         return train_dataset, val_dataset
 
@@ -179,22 +230,42 @@ class DataManager:
         print("Creating manual train/test split by directories")
         print("=" * 50)
 
+        # Check if we should use sliding window for training
+        use_sliding_window_train = getattr(config, 'use_sliding_window', False)
+        use_sliding_window_test = False  # Always use original mode for testing
+
         # Load training dataset
         print("\n[Training Dataset]")
-        train_full_dataset = DataManager.load_datasets(config, device, config.train_data_dirs)
-        train_valid_indices = DataManager.get_or_compute_valid_indices(
-            train_full_dataset, config, cache_suffix='_train'
+        train_full_dataset = DataManager.load_datasets(
+            config, device, config.train_data_dirs,
+            use_sliding_window=use_sliding_window_train
         )
 
-        if max_samples and len(train_valid_indices) > max_samples:
-            train_valid_indices = train_valid_indices[:max_samples]
-            print(f"Limited training set to {max_samples} samples")
+        if use_sliding_window_train:
+            # For sliding window, all windows are already validated
+            train_indices = list(range(len(train_full_dataset)))
+            if max_samples and len(train_indices) > max_samples:
+                train_indices = train_indices[:max_samples]
+                print(f"Limited training set to {max_samples} windows")
+            train_dataset = Subset(train_full_dataset, train_indices)
+        else:
+            # Original logic for trial-based dataset
+            train_valid_indices = DataManager.get_or_compute_valid_indices(
+                train_full_dataset, config, cache_suffix='_train'
+            )
 
-        train_dataset = Subset(train_full_dataset, train_valid_indices)
+            if max_samples and len(train_valid_indices) > max_samples:
+                train_valid_indices = train_valid_indices[:max_samples]
+                print(f"Limited training set to {max_samples} samples")
 
-        # Load test dataset
+            train_dataset = Subset(train_full_dataset, train_valid_indices)
+
+        # Load test dataset (always use original mode)
         print("\n[Test Dataset]")
-        test_full_dataset = DataManager.load_datasets(config, device, config.val_dataset)
+        test_full_dataset = DataManager.load_datasets(
+            config, device, config.val_dataset,
+            use_sliding_window=use_sliding_window_test
+        )
         test_valid_indices = DataManager.get_or_compute_valid_indices(
             test_full_dataset, config, cache_suffix='_test'
         )
@@ -207,7 +278,10 @@ class DataManager:
 
         print("\n" + "=" * 50)
         print(f"Final dataset split (manual):")
-        print(f"  - Training: {len(train_dataset)} trials from {len(config.train_data_dirs)} directories")
+        if use_sliding_window_train:
+            print(f"  - Training: {len(train_dataset)} windows from {len(config.train_data_dirs)} directories")
+        else:
+            print(f"  - Training: {len(train_dataset)} trials from {len(config.train_data_dirs)} directories")
         print(f"  - Testing:  {len(test_dataset)} trials from {len(config.val_dataset)} directories")
         print("=" * 50 + "\n")
 
@@ -239,18 +313,24 @@ class DataManager:
 
     @staticmethod
     def collate_function(batch: List, device: torch.device) -> Tuple:
-        """Custom collate function for batching sequences with trial names."""
+        """Custom collate function for batching sequences with trial names or window info."""
         inputs = [item[0] for item in batch]
         labels = [item[1] for item in batch]
         seq_lengths = [item[2][0] for item in batch]
 
-        # Handle trial names - each item[3] is a list of trial names
-        trial_names = []
+        # Handle trial names or window metadata
+        metadata = []
         for item in batch:
-            if len(item[3]) == 1:  # Single trial
-                trial_names.append(item[3][0])
-            else:  # Multiple trials (shouldn't happen in typical usage)
-                trial_names.extend(item[3])
+            # item[3] could be trial names (list of strings) or window metadata (list of dicts)
+            if isinstance(item[3][0], str):
+                # Original trial names
+                if len(item[3]) == 1:  # Single trial
+                    metadata.append(item[3][0])
+                else:  # Multiple trials (shouldn't happen in typical usage)
+                    metadata.extend(item[3])
+            else:
+                # Window metadata (dict)
+                metadata.extend(item[3])
 
         # Remove extra dimensions
         inputs = [x.squeeze(0) for x in inputs]
@@ -269,4 +349,4 @@ class DataManager:
             padded_inputs.append(padded_inp)
             padded_labels.append(padded_lab)
 
-        return torch.stack(padded_inputs), torch.stack(padded_labels), seq_lengths, trial_names
+        return torch.stack(padded_inputs), torch.stack(padded_labels), seq_lengths, metadata
