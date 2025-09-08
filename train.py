@@ -296,7 +296,7 @@ def main():
         )
 
         print(f"\nManual split completed:")
-        print(f"  Training batches: {len(val_dataset)}")
+        print(f"  Training batches: {len(train_dataset)}")
         print(f"  Test batches: {len(val_dataset)}")
 
     else:  # random split

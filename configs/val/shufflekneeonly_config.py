@@ -96,7 +96,7 @@ participant_masses = {
 	"BT24": 77.79
 }
 
-# vel_filter_cutoff = 10.0
-# sampling_rate = 200.0
-# vel_filter_sampling_rate = 200.0
-# input_rate = 100
+vel_filter_cutoff = 10.0
+sampling_rate = 200.0
+vel_filter_sampling_rate = 200.0
+input_rate = 100
