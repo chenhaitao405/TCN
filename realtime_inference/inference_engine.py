@@ -1,6 +1,6 @@
 import sys
 import os
-
+from ImpactAttenuator import ImpactAttenuator
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.config_utils import ConfigManager
@@ -60,6 +60,19 @@ class InferenceEngine:
 
         self.input_frames_needed = int(self.history_window * self.input_rate / 200)
 
+        # 初始化冲击衰减器
+        self.impact_attenuator = None
+        if hasattr(self.config, 'enable_impact_attenuation') and self.config.enable_impact_attenuation:
+            # 从配置文件读取参数，或使用默认值
+            attenuator_config = {
+                'frame_rate': self.input_rate
+            }
+
+            self.impact_attenuator = ImpactAttenuator(**attenuator_config)
+            print(f"冲击衰减器已启用")
+
+
+
 
         # 性能监控
         self.inference_times = deque(maxlen=100)
@@ -74,7 +87,9 @@ class InferenceEngine:
         # 初始化巴特沃斯滤波器（用于motorVel）
         if hasattr(self.config, 'vel_filter_cutoff'):
             self.init_butterworth_filter(self.config.vel_filter_cutoff, self.config.vel_filter_sampling_rate)
-            print(f"已启用motorVel滤波器 (截止频率: {self.config.vel_filter_cutoff} Hz)")
+            print(f"已启用力矩滤波器 (截止频率: {self.config.vel_filter_cutoff} Hz)")
+
+
 
     def init_butterworth_filter(self, cutoff_freq: float, sampling_rate: float):
         """
@@ -139,6 +154,12 @@ class InferenceEngine:
         """
         start_time = time.time()
 
+        # 1. 冲击检测和衰减系数计算
+        attenuation_factor = 1.0
+        if self.impact_attenuator is not None:
+            acc_x = sensor_data.get('thigh_imu_*_accel_y', 0.0)
+            attenuation_factor, new_impact = self.impact_attenuator.process(acc_x)
+
         # 将传感器数据按配置顺序排列
         frame_data = np.array([sensor_data.get(name, 0.0) for name in self.input_names])
         self.data_buffer.append(frame_data)
@@ -169,7 +190,10 @@ class InferenceEngine:
             # 获取最新的预测值（这是对past时刻的预测）
             moment_value = output[0, i, -1].item()
             if self.enable_vel_filter:
+                # 应用冲击衰减
+                # moment_value *= attenuation_factor
                 moment_value = self.filter_velocity(moment_value)
+
             moments[label_name] = moment_value
 
         # 记录推理时间

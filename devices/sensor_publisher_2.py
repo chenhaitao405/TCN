@@ -94,7 +94,7 @@ class CSVDataPublisher:
                 if first_line.iloc[0].dtype == object and 'motorPos' in str(first_line.iloc[0, 0]):
                     # 有表头
                     self.data = pd.read_csv(self.csv_path)
-                    self.data.columns = self.column_names
+                    # self.data.columns = self.column_names
                     rospy.loginfo(f"Loaded {len(self.data)} rows from {self.csv_path} (with header)")
                 else:
                     # 没有表头
@@ -274,13 +274,13 @@ def main():
     parser.add_argument(
         '--csv',
         type=str,
-        default='kneeData_left.csv',
+        default='kneeData_left_off_joints.csv',
         help='Path to CSV file (default: kneeData_left.csv)'
     )
     parser.add_argument(
         '--label',
         type=int,
-        default=2,
+        default=0,
         help='Label filter: only publish data with this label (default: 2)'
     )
     parser.add_argument(
