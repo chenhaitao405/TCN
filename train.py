@@ -207,7 +207,7 @@ def prepare_data(config, args, device):
 
     # Initialize data manager
     data_manager = DataManager()
-
+    device_cpu = torch.device("cpu")
     # Get sliding window configuration
     use_sliding_window = getattr(config, 'use_sliding_window', False)
 
@@ -229,7 +229,7 @@ def prepare_data(config, args, device):
         # Create manual split
         train_dataset, val_dataset = data_manager.create_manual_split(
             config=config,
-            device=device,
+            device=device_cpu,
             max_samples=args.max_samples if hasattr(args, 'max_samples') else None
         )
 
@@ -238,7 +238,7 @@ def prepare_data(config, args, device):
             train_dataset=train_dataset,
             val_dataset=val_dataset,
             batch_size=args.batch_size,
-            device=device
+            device=device_cpu
         )
 
         print(f"\nManual split completed:")

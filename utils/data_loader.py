@@ -18,10 +18,10 @@ class DataManager:
 
     @staticmethod
     def load_datasets(
-        config: Any,
-        device: torch.device,
-        data_dirs: Optional[List[str]] = None,
-        use_sliding_window: bool = False
+            config: Any,
+            device: torch.device,
+            data_dirs: Optional[List[str]] = None,
+            use_sliding_window: bool = False
     ) -> ConcatDataset:
         """Load all datasets from configured paths.
 
@@ -48,7 +48,13 @@ class DataManager:
         if use_sliding_window:
             window_size = getattr(config, 'window_size', 280)
             window_stride = getattr(config, 'window_stride', 10)
+
+            # 获取LRU缓存大小参数
+            max_cache_size = getattr(config, 'max_cache_size', 100)  # 默认缓存100个trials
+
             print(f"Using sliding window mode: size={window_size}, stride={window_stride}")
+            print(f"LRU cache size: {max_cache_size} trials")
+
             DatasetClass = TcnDatasetSlidingWindow
         else:
             DatasetClass = TcnDataset
@@ -65,7 +71,8 @@ class DataManager:
                         window_stride=window_stride,
                         participant_masses=config.participant_masses,
                         action_patterns=action_patterns,
-                        device=device
+                        device=device,
+                        max_cache_size=max_cache_size  # LRU缓存大小
                     )
                 else:
                     dataset = DatasetClass(
@@ -212,9 +219,9 @@ class DataManager:
 
     @staticmethod
     def create_manual_split(
-        config: Any,
-        device: torch.device,
-        max_samples: Optional[int] = None
+            config: Any,
+            device: torch.device,
+            max_samples: Optional[int] = None
     ) -> Tuple[Subset, Subset]:
         """Create train/test split from dataset using manual directory-based splitting.
 
@@ -236,6 +243,16 @@ class DataManager:
 
         # Load training dataset
         print("\n[Training Dataset]")
+
+        # Get cache size for sliding window mode
+        if use_sliding_window_train:
+            window_size = getattr(config, 'window_size', 280)
+            window_stride = getattr(config, 'window_stride', 10)
+            max_cache_size = getattr(config, 'max_cache_size', 100)  # LRU cache size
+
+            print(f"Using sliding window mode: size={window_size}, stride={window_stride}")
+            print(f"LRU cache size: {max_cache_size} trials")
+
         train_full_dataset = DataManager.load_datasets(
             config, device, config.train_data_dirs,
             use_sliding_window=use_sliding_window_train
@@ -298,8 +315,10 @@ class DataManager:
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
+            num_workers=16,
+            pin_memory=True,  # 重要！预固定内存，加速GPU传输
+            persistent_workers=True,  # 保持worker进程
             shuffle=True,
-            collate_fn=lambda x: DataManager.collate_function(x, device)
         )
 
         val_loader = DataLoader(

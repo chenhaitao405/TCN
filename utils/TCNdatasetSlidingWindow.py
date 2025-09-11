@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 
 class TcnDatasetSlidingWindow(Dataset):
-    '''Dataset for loading data using sliding window approach.'''
+    '''Optimized Dataset for loading data using sliding window approach with LRU cache.'''
 
     def __init__(self,
                  data_dir: str,
@@ -24,14 +24,15 @@ class TcnDatasetSlidingWindow(Dataset):
                  action_patterns: Optional[List[str]] = None,
                  device: torch.device = torch.device("cpu"),
                  cache_dir: str = 'cache',
-                 cache_suffix: str = '_sliding'):
+                 cache_suffix: str = '_sliding',
+                 max_cache_size: int = 100):
         """
-        Initialize sliding window dataset.
+        Initialize sliding window dataset with LRU cache optimization.
 
         Args:
             window_size: Size of each window (default 280)
             window_stride: Stride for sliding window (default 10)
-            cache_suffix: Suffix for cache files to differentiate from regular dataset
+            max_cache_size: Maximum number of trials to keep in memory cache
         """
         self.data_dir = data_dir
         self.input_names = input_names
@@ -44,6 +45,11 @@ class TcnDatasetSlidingWindow(Dataset):
         self.device = device
         self.cache_dir = cache_dir
         self.cache_suffix = cache_suffix
+        self.max_cache_size = max_cache_size
+
+        # Initialize LRU cache
+        self._trial_cache = {}
+        self._cache_order = []  # Track access order for LRU
 
         # Get trial names
         self.trial_names = self._get_trial_names()
@@ -54,6 +60,8 @@ class TcnDatasetSlidingWindow(Dataset):
 
         # Initialize window indices
         print(f"  - Window size: {self.window_size}, Stride: {self.window_stride}")
+        print(f"  - Using LRU cache with size: {self.max_cache_size}")
+
         self.window_indices = self._get_or_compute_window_indices()
         print(f"  - Total valid windows: {len(self.window_indices)}")
 
@@ -68,12 +76,12 @@ class TcnDatasetSlidingWindow(Dataset):
         start_idx = window_info['start_idx']
         end_idx = window_info['end_idx']
 
-        # Load trial data
+        # Load trial data (with LRU caching)
         input_data, label_data = self._load_trial_data_train(trial_name)
 
         # Extract window
-        window_input = input_data[:, :, start_idx:end_idx]
-        window_label = label_data[:, :, start_idx:end_idx]
+        window_input = input_data[0, :, start_idx:end_idx]
+        window_label = label_data[0, :, start_idx:end_idx]
 
         # Window info for tracking
         window_metadata = {
@@ -84,8 +92,66 @@ class TcnDatasetSlidingWindow(Dataset):
         }
 
         # Return format compatible with original dataset
-        # Note: seq_lengths is always window_size for sliding window
-        return window_input, window_label, [self.window_size], [window_metadata]
+        return window_input, window_label, self.window_size, window_metadata
+
+    def _load_trial_data_train(self, trial_name: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Load trial data with LRU caching."""
+
+        # Check if in cache
+        if trial_name in self._trial_cache:
+            # Move to front (most recently used)
+            self._cache_order.remove(trial_name)
+            self._cache_order.append(trial_name)
+            return self._trial_cache[trial_name]
+
+        # Load trial from disk
+        input_data, label_data = self._load_trial_data_from_disk(trial_name)
+
+        # Add to cache
+        self._trial_cache[trial_name] = (input_data, label_data)
+        self._cache_order.append(trial_name)
+
+        # Remove least recently used if cache is full
+        if len(self._trial_cache) > self.max_cache_size:
+            lru_trial = self._cache_order.pop(0)
+            del self._trial_cache[lru_trial]
+
+        return input_data, label_data
+
+    def _load_trial_data_from_disk(self, trial_name: str):
+        """Load trial data from CSV files (original implementation)."""
+        trial_dir = os.path.join(self.data_dir, trial_name)
+
+        # Find input file
+        input_file_path = None
+        for file in os.listdir(trial_dir):
+            file_lower = file.lower()
+            if file_lower.endswith("exo.csv") and not file_lower.endswith("power_exo.csv"):
+                input_file_path = os.path.join(trial_dir, file)
+                break
+
+        if input_file_path is None:
+            raise FileNotFoundError(f"No file ending with '_exo.csv' found in {trial_dir}")
+
+        participant = trial_name.split("/")[0].split("\\")[0]
+        if participant not in self.participant_masses:
+            print(f"Warning - {participant} mass was not provided.")
+        input_data = self._load_input_data(input_file_path, body_mass=self.participant_masses.get(participant, 1.))
+
+        # Find label file
+        label_file_path = None
+        for file in os.listdir(trial_dir):
+            file_lower = file.lower()
+            if file_lower.endswith("_moment_filt.csv"):
+                label_file_path = os.path.join(trial_dir, file)
+                break
+
+        if label_file_path is None:
+            raise FileNotFoundError(f"No file ending with '_moment_filt.csv' found in {trial_dir}")
+
+        label_data = self._load_label_data(label_file_path)
+
+        return input_data, label_data
 
     def _get_or_compute_window_indices(self) -> List[Dict]:
         """Get or compute valid window indices with caching."""
@@ -173,6 +239,21 @@ class TcnDatasetSlidingWindow(Dataset):
 
         return window_indices
 
+    def clear_cache(self):
+        """Clear the LRU cache to free memory."""
+        self._trial_cache.clear()
+        self._cache_order.clear()
+        print(f"Cache cleared")
+
+    def get_cache_stats(self) -> Dict:
+        """Get cache statistics."""
+        return {
+            'cache_size': len(self._trial_cache),
+            'max_cache_size': self.max_cache_size,
+            'cached_trials': list(self._trial_cache.keys()),
+            'cache_order': self._cache_order.copy()
+        }
+
     def extract_action_type(self, trial_name: str) -> str:
         """Extract action type from trial name."""
         if '/' in trial_name:
@@ -231,38 +312,6 @@ class TcnDatasetSlidingWindow(Dataset):
             print(f"  - Action distribution: {action_stats}")
 
         return trial_names
-
-    def _load_trial_data_train(self, trial_name: str):
-        '''Loads data from a single trial.'''
-        trial_dir = os.path.join(self.data_dir, trial_name)
-        input_file_path = None
-        for file in os.listdir(trial_dir):
-            file_lower = file.lower()
-            if file_lower.endswith("exo.csv") and not file_lower.endswith("power_exo.csv"):
-                input_file_path = os.path.join(trial_dir, file)
-                break
-
-        if input_file_path is None:
-            raise FileNotFoundError(f"No file ending with '_exo.csv' found in {trial_dir}")
-
-        participant = trial_name.split("/")[0].split("\\")[0]
-        if participant not in self.participant_masses:
-            print(f"Warning - {participant} mass was not provided.")
-        input_data = self._load_input_data(input_file_path, body_mass=self.participant_masses.get(participant, 1.))
-
-        label_file_path = None
-        for file in os.listdir(trial_dir):
-            file_lower = file.lower()
-            if file_lower.endswith("_moment_filt.csv"):
-                label_file_path = os.path.join(trial_dir, file)
-                break
-
-        if label_file_path is None:
-            raise FileNotFoundError(f"No file ending with '_moment_filt.csv' found in {trial_dir}")
-
-        label_data = self._load_label_data(label_file_path)
-
-        return input_data, label_data
 
     def _load_input_data(self, file_path: str, body_mass: float):
         '''Loads input data from a single file and returns as a 3D torch.FloatTensor.'''
