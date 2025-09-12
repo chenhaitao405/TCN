@@ -1,7 +1,7 @@
 import os
 
 # relative file path to trained model
-task_name = "random20stride_shufflekneeonly_thigh_p1p2"  #sensor_trainData_valData
+task_name = "random10stride_shufflekneeonly_thigh_p1p2"  #sensor_trainData_valData
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 
@@ -30,7 +30,7 @@ val_dataset = [
 # 随机划分时使用的数据目录（保留向后兼容）
 data_dirs = [
     "/home/lenovo/code/CHT/datasets/EXO/Phase1And2_Parsed/Parsed",
-    "/home/lenovo/code/CHT/datasets/EXO/Phase3_Parsed/Parsed"
+	# "/home/lenovo/code/CHT/datasets/EXO/Phase3_Parsed/val",
 ]
 
 # 验证集比例（仅在random模式下使用）

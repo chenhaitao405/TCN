@@ -203,106 +203,150 @@ def create_argument_parser():
 
 
 def prepare_data(config, args, device):
-    """Prepare data with sliding window support for training."""
 
-    # Initialize data manager
+    """
+    Prepare data with sliding window support for training.
+
+    Args:
+        config: Configuration object containing data loading parameters
+        args: Arguments containing batch_size and optional max_samples
+        device: Device to load data onto
+
+    Returns:
+        tuple: (train_loader, val_loader) - DataLoaders for training and validation
+    """
+
+    def _print_configuration(config, split_mode, use_sliding_window):
+        """Print data loading configuration."""
+        print("=" * 50)
+        print("Data Loading Configuration:")
+        print(f"  Split Mode: {split_mode.capitalize()}")
+        print(f"  Training Mode: {'Sliding Window' if use_sliding_window else 'Full Trial'}")
+
+        if use_sliding_window:
+            print(f"  Window Size: {config.window_size}")
+            print(f"  Window Stride: {config.window_stride}")
+
+        print("=" * 50)
+
+    def _create_datasets(data_manager, config, split_mode, use_sliding_window, device, max_samples):
+        """
+        Create train and validation datasets based on split mode.
+
+        Args:
+            data_manager: DataManager instance
+            config: Configuration object
+            split_mode: 'manual' or 'random' split mode
+            device: Device for data loading
+            max_samples: Maximum number of samples to load
+
+        Returns:
+            tuple: (train_dataset, val_dataset)
+
+        Raises:
+            ValueError: If manual split mode is missing required configuration
+        """
+        if split_mode == 'manual':
+            # Validate manual split configuration
+            if not hasattr(config, 'train_data_dirs') or not hasattr(config, 'val_dataset'):
+                raise ValueError(
+                    "Manual split mode requires 'train_data_dirs' and 'val_dataset' in config"
+                )
+
+            return data_manager.create_manual_split(
+                config=config,
+                device=device,
+                max_samples=max_samples,
+            )
+
+        else:  # random split
+            return data_manager.create_random_train_val_split(
+                config=config,
+                device=device,
+                max_samples=max_samples,
+                use_sliding_window = use_sliding_window,
+            )
+
+    def _create_dataloaders(data_manager, train_dataset, val_dataset,
+                            batch_size, device, use_sliding_window):
+        """
+        Create data loaders based on training mode.
+
+        Args:
+            data_manager: DataManager instance
+            train_dataset: Training dataset
+            val_dataset: Validation dataset
+            batch_size: Batch size for data loading
+            device: Device for data loading
+            use_sliding_window: Whether to use sliding window mode
+
+        Returns:
+            tuple: (train_loader, val_loader)
+        """
+        if use_sliding_window:
+            # Use sliding window data loaders
+            return data_manager.create_dataloaders_windows(
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                batch_size=batch_size,
+                device=device
+            )
+        else:
+            # Use full trial data loaders
+            return data_manager.create_dataloaders_trail(
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                batch_size=batch_size,
+                device=device
+            )
+
+    def _print_split_results(split_mode, use_sliding_window,
+                             train_dataset, val_dataset,
+                             train_loader, val_loader):
+        """Print the results of data splitting."""
+        mode_name = "Manual" if split_mode == 'manual' else "Random"
+        data_unit = "windows" if use_sliding_window else "trials"
+
+        print(f"\n{mode_name} split completed:")
+        print(f"  Training: {len(train_dataset)} {data_unit}, {len(train_loader)} batches")
+
+        # Use consistent naming for validation/testing
+        val_label = "Testing" if split_mode == 'manual' else "Validation"
+        print(f"  {val_label}: {len(val_dataset)} {data_unit}, {len(val_loader)} batches")
+
+    # Initialize components
     data_manager = DataManager()
     device_cpu = torch.device("cpu")
-    # Get sliding window configuration
+
+    # Extract configuration parameters
     use_sliding_window = getattr(config, 'use_sliding_window', False)
+    split_mode = config.split_mode
+    batch_size = args.batch_size
+    max_samples = getattr(args, 'max_samples', None)
 
-    if config.split_mode == 'manual':
-        # Manual split mode (by directories)
-        if not hasattr(config, 'train_data_dirs') or not hasattr(config, 'val_dataset'):
-            raise ValueError("Manual split mode requires 'train_data_dirs' and 'val_dataset' in config")
+    # Print configuration header
+    _print_configuration(config, split_mode, use_sliding_window)
 
-        # Print configuration
-        print("=" * 50)
-        print("Data Loading Configuration:")
-        print(f"  Split Mode: Manual")
-        print(f"  Training Mode: {'Sliding Window' if use_sliding_window else 'Full Trial'}")
-        if use_sliding_window:
-            print(f"  Window Size: {config.window_size}")
-            print(f"  Window Stride: {config.window_stride}")
-        print("=" * 50)
+    # Create datasets based on split mode
+    train_dataset, val_dataset = _create_datasets(
+        data_manager, config, split_mode,use_sliding_window,  device_cpu, max_samples
+    )
 
-        # Create manual split
-        train_dataset, val_dataset = data_manager.create_manual_split(
-            config=config,
-            device=device_cpu,
-            max_samples=args.max_samples if hasattr(args, 'max_samples') else None
-        )
+    # Create data loaders based on training mode
+    train_loader, val_loader = _create_dataloaders(
+        data_manager, train_dataset, val_dataset,
+        batch_size, device_cpu, use_sliding_window
+    )
 
-        if use_sliding_window:
-        # Create data loaders
-            train_loader, val_loader = data_manager.create_dataloaders_windows(
-                train_dataset=train_dataset,
-                val_dataset=val_dataset,
-                batch_size=args.batch_size,
-                device=device_cpu
-            )
-        else:
-            train_loader, val_loader = data_manager.create_dataloaders_windows(
-                train_dataset=train_dataset,
-                val_dataset=val_dataset,
-                batch_size=args.batch_size,
-                device=device_cpu
-            )
-
-        print(f"\nManual split completed:")
-        if use_sliding_window:
-            print(f"  Training: {len(train_dataset)} windows, {len(train_loader)} batches")
-        else:
-            print(f"  Training: {len(train_dataset)} trials, {len(train_loader)} batches")
-        print(f"  Testing: {len(val_dataset)} trials, {len(val_loader)} batches")
-
-    else:  # random split
-        # Random split mode
-        print("=" * 50)
-        print("Data Loading Configuration:")
-        print(f"  Split Mode: Random")
-        print(f"  Training Mode: {'Sliding Window' if use_sliding_window else 'Full Trial'}")
-        if use_sliding_window:
-            print(f"  Window Size: {config.window_size}")
-            print(f"  Window Stride: {config.window_stride}")
-        print("=" * 50)
-
-        # Load full dataset
-        full_dataset = data_manager.load_datasets(
-            config=config,
-            device=device,
-            use_sliding_window=use_sliding_window
-        )
-
-        # Get validation split ratio
-        val_split = getattr(config, 'val_split', args.val_split if hasattr(args, 'val_split') else 0.1)
-
-        # Create train/val split
-        train_dataset, val_dataset = data_manager.create_train_val_split(
-            full_dataset=full_dataset,
-            config=config,
-            val_split=val_split,
-            max_samples=args.max_samples if hasattr(args, 'max_samples') else None,
-            use_sliding_window=use_sliding_window
-        )
-
-        # Create data loaders
-        train_loader, val_loader = data_manager.create_dataloaders_random(
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
-            batch_size=args.batch_size,
-            device=device_cpu
-        )
-
-        print(f"\nRandom split completed:")
-        if use_sliding_window:
-            print(f"  Training: {len(train_dataset)} windows, {len(train_loader)} batches")
-            print(f"  Validation: {len(val_dataset)} windows, {len(val_loader)} batches")
-        else:
-            print(f"  Training: {len(train_dataset)} trials, {len(train_loader)} batches")
-            print(f"  Validation: {len(val_dataset)} trials, {len(val_loader)} batches")
+    # Print split results
+    _print_split_results(
+        split_mode, use_sliding_window,
+        train_dataset, val_dataset,
+        train_loader, val_loader
+    )
 
     return train_loader, val_loader
+
 
 def setup_training_directory_with_model_name(base_dir, model_path):
     """

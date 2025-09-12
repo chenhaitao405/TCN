@@ -178,27 +178,37 @@ class DataManager:
         return valid_indices
 
     @staticmethod
-    def create_train_val_split(
-        full_dataset: ConcatDataset,
+    def create_random_train_val_split(
         config: Any,
         val_split: float = 0.1,
+        device: Optional[torch.device] = torch.device("cpu"),
         max_samples: Optional[int] = None,
         use_sliding_window: bool = False
     ) -> Tuple[Subset, Subset]:
         """Create train/validation split from dataset using random split."""
 
-        # For sliding window datasets, indices are already valid (NaN-free)
-        if use_sliding_window:
-            total_windows = len(full_dataset)
-            if max_samples and total_windows > max_samples:
-                indices = list(range(max_samples))
-                print(f"Limited to {max_samples} windows")
-            else:
-                indices = list(range(total_windows))
+        val_split = getattr(config, 'val_split', 0.1)
 
-            # Create subset with all valid windows
-            filtered_dataset = Subset(full_dataset, indices)
+        if use_sliding_window:
+            full_dataset = DataManager.load_datasets(
+                config, device, config.data_dirs,
+                use_sliding_window=use_sliding_window
+            )
+
+            dataset_size = len(full_dataset)
+            # 计算验证集的大小
+            val_size = int(dataset_size * 0.1)  # 10% 用作验证集
+            train_size = dataset_size - val_size  # 剩余的作为训练集
+            # 使用 random_split 切分数据集
+            train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+
         else:
+            full_dataset = DataManager.load_datasets(
+                config=config,
+                device=device,
+                use_sliding_window=use_sliding_window
+            )
+
             # Original logic for trial-based dataset
             valid_indices = DataManager.get_or_compute_valid_indices(full_dataset, config)
 
@@ -208,9 +218,9 @@ class DataManager:
 
             filtered_dataset = Subset(full_dataset, valid_indices)
 
-        val_size = int(len(filtered_dataset) * val_split)
-        train_size = len(filtered_dataset) - val_size
-        train_dataset, val_dataset = random_split(filtered_dataset, [train_size, val_size])
+            val_size = int(len(filtered_dataset) * val_split)
+            train_size = len(filtered_dataset) - val_size
+            train_dataset, val_dataset = random_split(filtered_dataset, [train_size, val_size])
 
         dataset_type = "windows" if use_sliding_window else "trials"
         print(f"Dataset split (random): {train_size} train {dataset_type}, {val_size} validation {dataset_type}")
@@ -244,14 +254,7 @@ class DataManager:
         # Load training dataset
         print("\n[Training Dataset]")
 
-        # Get cache size for sliding window mode
-        if use_sliding_window_train:
-            window_size = getattr(config, 'window_size', 280)
-            window_stride = getattr(config, 'window_stride', 10)
-            max_cache_size = getattr(config, 'max_cache_size', 100)  # LRU cache size
-
-            print(f"Using sliding window mode: size={window_size}, stride={window_stride}")
-            print(f"LRU cache size: {max_cache_size} trials")
+        # Get cache size for sliding window model
 
         train_full_dataset = DataManager.load_datasets(
             config, device, config.train_data_dirs,
@@ -318,14 +321,16 @@ class DataManager:
             num_workers=32,
             pin_memory=True,  # 重要！预固定内存，加速GPU传输
             persistent_workers=True,  # 保持worker进程
-            shuffle=True,  #是否随机打乱
+            shuffle=False,  #是否随机打乱
         )
 
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
-            shuffle=False,
-            collate_fn=lambda x: DataManager.collate_function(x, device)
+            num_workers=32,
+            pin_memory=True,  # 重要！预固定内存，加速GPU传输
+            persistent_workers=True,  # 保持worker进程
+            shuffle=False,  #是否随机打乱
         )
 
         return train_loader, val_loader
