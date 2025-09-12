@@ -1,13 +1,20 @@
 import os
 
 # relative file path to trained model
-task_name = "manual_shufflekneeonly_thigh_p1p2"  #sensor_trainData_valData
+task_name = "random20stride_shufflekneeonly_thigh_p1p2"  #sensor_trainData_valData
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
 
+# ========== 滑动窗口配置 ==========
+# Sliding Window Configuration for Training
+use_sliding_window = True  # Set to True to use sliding window for training, False to use original mode
+window_size = 280  # Size of each window (number of time steps)
+window_stride = 10  # Stride for sliding window (how many steps to slide)
+min_trial_length = 280  # Minimum trial length required (should be >= window_size)
+max_cache_size = 2000
 # ========== 数据集划分配置 ==========
 # split_mode: "manual" 使用手动划分（按目录）, "random" 使用随机划分
-split_mode = "manual"  # or "random"
+split_mode = "random"  # or "random"
 
 # 手动划分时使用的训练和测试数据目录
 train_data_dirs = [

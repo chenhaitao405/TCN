@@ -25,7 +25,7 @@ class TcnDatasetSlidingWindow(Dataset):
                  device: torch.device = torch.device("cpu"),
                  cache_dir: str = 'cache',
                  cache_suffix: str = '_sliding',
-                 max_cache_size: int = 100):
+                 max_cache_size: int = 3000):
         """
         Initialize sliding window dataset with LRU cache optimization.
 

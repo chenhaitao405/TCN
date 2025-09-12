@@ -233,13 +233,21 @@ def prepare_data(config, args, device):
             max_samples=args.max_samples if hasattr(args, 'max_samples') else None
         )
 
+        if use_sliding_window:
         # Create data loaders
-        train_loader, val_loader = data_manager.create_dataloaders(
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
-            batch_size=args.batch_size,
-            device=device_cpu
-        )
+            train_loader, val_loader = data_manager.create_dataloaders_windows(
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                batch_size=args.batch_size,
+                device=device_cpu
+            )
+        else:
+            train_loader, val_loader = data_manager.create_dataloaders_windows(
+                train_dataset=train_dataset,
+                val_dataset=val_dataset,
+                batch_size=args.batch_size,
+                device=device_cpu
+            )
 
         print(f"\nManual split completed:")
         if use_sliding_window:
@@ -279,11 +287,11 @@ def prepare_data(config, args, device):
         )
 
         # Create data loaders
-        train_loader, val_loader = data_manager.create_dataloaders(
+        train_loader, val_loader = data_manager.create_dataloaders_random(
             train_dataset=train_dataset,
             val_dataset=val_dataset,
             batch_size=args.batch_size,
-            device=device
+            device=device_cpu
         )
 
         print(f"\nRandom split completed:")

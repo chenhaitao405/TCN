@@ -305,7 +305,7 @@ class DataManager:
         return train_dataset, test_dataset
 
     @staticmethod
-    def create_dataloaders(
+    def create_dataloaders_windows(
         train_dataset: Subset,
         val_dataset: Subset,
         batch_size: int,
@@ -315,10 +315,10 @@ class DataManager:
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            num_workers=16,
+            num_workers=32,
             pin_memory=True,  # 重要！预固定内存，加速GPU传输
             persistent_workers=True,  # 保持worker进程
-            shuffle=True,
+            shuffle=True,  #是否随机打乱
         )
 
         val_loader = DataLoader(
@@ -329,6 +329,31 @@ class DataManager:
         )
 
         return train_loader, val_loader
+
+    @staticmethod
+    def create_dataloaders_trail(
+        train_dataset: Subset,
+        val_dataset: Subset,
+        batch_size: int,
+        device: torch.device
+    ) -> Tuple[DataLoader, DataLoader]:
+        """Create DataLoaders for training and validation/test."""
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=lambda x: DataManager.collate_function(x, device)
+        )
+
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=lambda x: DataManager.collate_function(x, device)
+        )
+
+        return train_loader, val_loader
+
 
     @staticmethod
     def collate_function(batch: List, device: torch.device) -> Tuple:
