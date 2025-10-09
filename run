@@ -19,3 +19,4 @@ python -u example.py --config_path configs.sensor_selection.insole_only_config
 
 printf "\nUsing sensor_selection.no_insole_or_footimu_config.\n"
 python -u example.py --config_path configs.sensor_selection.no_insole_or_footimu_config
+#测试123

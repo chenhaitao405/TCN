@@ -12,7 +12,7 @@ import os
 
 # 简化版的DataPreprocessor类，只包含滤波功能
 class SimpleVelocityFilter:
-    def __init__(self, cutoff_freq: float = 10.0, sampling_rate: float = 200.0):
+    def __init__(self, cutoff_freq: float = 2.0, sampling_rate: float = 200.0):
         """
         初始化巴特沃斯低通滤波器
         Args:
@@ -260,7 +260,7 @@ def main():
     print(f"成功加载 {len(data)} 行数据")
 
     # 滤波参数
-    cutoff_freq = 10.0  # Hz
+    cutoff_freq = 7.0  # Hz
     sampling_rate = 200.0  # Hz
 
     print(f"\n开始滤波处理...")

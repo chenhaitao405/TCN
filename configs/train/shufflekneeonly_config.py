@@ -4,6 +4,9 @@ import os
 task_name = "10Action_shufflekneeonly_thigh_p1p2"  #sensor_trainData_valData
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 
+
+# split_mode: "manual" 使用手动划分（按目录）, "random" 使用随机划分
+split_mode = "random"  # or "random"
 # relative path to data
 data_dirs = [
     "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",

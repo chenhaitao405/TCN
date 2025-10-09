@@ -217,10 +217,10 @@ class InferenceWorker(QThread):
                 inference_time = (inference_end - inference_start) * 1000  # 转换为毫秒
 
                 # 打印耗时统计
-                print(f"预处理耗时: {preprocess_time:.3f} ms")
-                print(f"推理耗时: {inference_time:.3f} ms")
-                print(f"总耗时: {(preprocess_time + inference_time):.3f} ms")
-                print("-" * 40)  # 分隔线，便于查看
+                # print(f"预处理耗时: {preprocess_time:.3f} ms")
+                # print(f"推理耗时: {inference_time:.3f} ms")
+                # print(f"总耗时: {(preprocess_time + inference_time):.3f} ms")
+                # print("-" * 40)  # 分隔线，便于查看
 
                 # 获取时间戳（使用相对时间）
                 current_timestamp = rospy.Time.now().to_sec()

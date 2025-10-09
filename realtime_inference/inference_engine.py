@@ -1,5 +1,6 @@
 import sys
 import os
+from ImpactAttenuator import ImpactAttenuator
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -11,6 +12,55 @@ from collections import deque
 from typing import Dict, List, Optional, Tuple
 import time
 from scipy import signal
+
+
+class TorqueNonlinearFilter:
+    """力矩系数非线性滤波器"""
+
+    def __init__(self,
+                 power_pos=1.5,  # 正向幂次
+                 power_neg=2.5,  # 负向幂次
+                 gain_pos=1.8,  # 正向增益（>1为放大）
+                 gain_neg=0.8,  # 负向增益（<1为抑制）
+                 input_limit=0.4,  # 输入限制（修改为0.4）
+                 output_limit=0.6):  # 输出限制（修改为0.6，1.5倍）
+
+        self.power_pos = power_pos
+        self.power_neg = power_neg
+        self.gain_pos = gain_pos
+        self.gain_neg = gain_neg
+        self.input_limit = input_limit
+        self.output_limit = output_limit
+
+    def filter(self, torque_coefficient):
+        """
+        对力矩系数进行非线性滤波
+        输入范围：-0.4 到 +0.4
+        输出范围：-0.6 到 +0.6
+        """
+        # 输入限幅
+        torque_coefficient = np.clip(torque_coefficient,
+                                     -self.input_limit,
+                                     self.input_limit)
+
+        # 归一化到[-1, 1]
+        normalized = torque_coefficient / self.input_limit
+
+        # 应用非线性变换
+        if torque_coefficient >= 0:
+            # 正向：放大
+            filtered_norm = np.sign(normalized) * \
+                            (abs(normalized) ** self.power_pos) * \
+                            self.gain_pos
+        else:
+            # 负向：抑制
+            filtered_norm = -(abs(normalized) ** self.power_neg) * \
+                            self.gain_neg
+
+        # 反归一化并限幅
+        output = filtered_norm * self.input_limit
+        return np.clip(output, -self.output_limit, self.output_limit)
+
 
 class InferenceEngine:
     """实时推理引擎，复用现有的模型加载和配置管理代码"""
@@ -46,7 +96,6 @@ class InferenceEngine:
         self.buffer_size = self.history_window + 500  # 额外缓冲
         self.data_buffer = deque(maxlen=self.buffer_size)
 
-
         self.enable_vel_filter = False
         if hasattr(self.config, 'vel_filter_cutoff'):
             self.enable_vel_filter = True
@@ -60,6 +109,38 @@ class InferenceEngine:
 
         self.input_frames_needed = int(self.history_window * self.input_rate / 200)
 
+        # 初始化冲击衰减器
+        self.impact_attenuator = None
+        if hasattr(self.config, 'enable_impact_attenuation') and self.config.enable_impact_attenuation:
+            # 从配置文件读取参数，或使用默认值
+            attenuator_config = {
+                'frame_rate': self.input_rate
+            }
+
+            self.impact_attenuator = ImpactAttenuator(**attenuator_config)
+            print(f"冲击衰减器已启用")
+
+        # 初始化力矩非线性滤波器
+        self.torque_nonlinear_filter = None
+        if hasattr(self.config, 'enable_torque_nonlinear_filter') and self.config.enable_torque_nonlinear_filter:
+            # 从配置文件读取参数，或使用默认值
+            filter_params = {
+                'power_pos': getattr(self.config, 'torque_filter_power_pos', 1.5),
+                'power_neg': getattr(self.config, 'torque_filter_power_neg', 2.5),
+                'gain_pos': getattr(self.config, 'torque_filter_gain_pos', 1.8),
+                'gain_neg': getattr(self.config, 'torque_filter_gain_neg', 0.8),
+                'input_limit': getattr(self.config, 'torque_filter_input_limit', 0.4),  # 默认0.4
+                'output_limit': getattr(self.config, 'torque_filter_output_limit', 0.6)  # 默认0.6
+            }
+
+            self.torque_nonlinear_filter = TorqueNonlinearFilter(**filter_params)
+            print(f"力矩非线性滤波器已启用:")
+            print(f"  - 正向幂次: {filter_params['power_pos']}")
+            print(f"  - 负向幂次: {filter_params['power_neg']}")
+            print(f"  - 正向增益: {filter_params['gain_pos']}")
+            print(f"  - 负向增益: {filter_params['gain_neg']}")
+            print(f"  - 输入限制: ±{filter_params['input_limit']}")
+            print(f"  - 输出限制: ±{filter_params['output_limit']}")
 
         # 性能监控
         self.inference_times = deque(maxlen=100)
@@ -74,7 +155,7 @@ class InferenceEngine:
         # 初始化巴特沃斯滤波器（用于motorVel）
         if hasattr(self.config, 'vel_filter_cutoff'):
             self.init_butterworth_filter(self.config.vel_filter_cutoff, self.config.vel_filter_sampling_rate)
-            print(f"已启用motorVel滤波器 (截止频率: {self.config.vel_filter_cutoff} Hz)")
+            print(f"已启用力矩滤波器 (截止频率: {self.config.vel_filter_cutoff} Hz)")
 
     def init_butterworth_filter(self, cutoff_freq: float, sampling_rate: float):
         """
@@ -139,6 +220,12 @@ class InferenceEngine:
         """
         start_time = time.time()
 
+        # 1. 冲击检测和衰减系数计算
+        attenuation_factor = 1.0
+        if self.impact_attenuator is not None:
+            acc_x = sensor_data.get('thigh_imu_*_accel_y', 0.0)
+            attenuation_factor, new_impact = self.impact_attenuator.process(acc_x)
+
         # 将传感器数据按配置顺序排列
         frame_data = np.array([sensor_data.get(name, 0.0) for name in self.input_names])
         self.data_buffer.append(frame_data)
@@ -168,8 +255,17 @@ class InferenceEngine:
         for i, label_name in enumerate(self.label_names):
             # 获取最新的预测值（这是对past时刻的预测）
             moment_value = output[0, i, -1].item()
+
+            # 应用巴特沃斯滤波器（如果启用）
             if self.enable_vel_filter:
+                # 应用冲击衰减
+                # moment_value *= attenuation_factor
                 moment_value = self.filter_velocity(moment_value)
+
+            # 应用力矩非线性滤波器（如果启用）
+            if self.torque_nonlinear_filter is not None:
+                moment_value = self.torque_nonlinear_filter.filter(moment_value)
+
             moments[label_name] = moment_value
 
         # 记录推理时间

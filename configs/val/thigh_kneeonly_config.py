@@ -2,7 +2,7 @@ import os
 
 # relative file path to trained model
 task_name = "10Action_thighkneeonly_thigh_p1p2"  #sensor_trainData_valData
-model_path = "checkpoints/train_10Action_kneeonly_thigh_p1p2_20250821_174852/best_model.tar"
+model_path = "checkpoints/train_manual20stride_shufflekneeonly_thigh_p1p2_20250912_115324/final_model.tar"
 
 # relative path to data
 data_dirs = [
@@ -98,7 +98,19 @@ participant_masses = {
 }
 
 
-vel_filter_cutoff = 10.0
+vel_filter_cutoff = 5.0
 sampling_rate = 200.0
 vel_filter_sampling_rate = 200.0
 input_rate = 100
+
+
+# 力矩非线性滤波器配置
+enable_torque_nonlinear_filter= True  # 是否启用力矩非线性滤波
+
+# 滤波器参数（可选，不设置则使用默认值）
+torque_filter_power_pos= 2.0     # 正向幂次 (默认: 1.5)
+torque_filter_power_neg= 2.5      # 负向幂次 (默认: 2.5)
+torque_filter_gain_pos= 3       # 正向增益 (默认: 1.8)
+torque_filter_gain_neg= 0.8       # 负向增益 (默认: 0.8)
+torque_filter_input_limit= 0.4    # 输入限制 (默认: 0.4)
+torque_filter_output_limit= 0.6   # 输出限制 (默认: 0.6)

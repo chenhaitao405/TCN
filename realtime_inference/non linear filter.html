@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>外骨骼力矩系数滤波函数（分段幂函数）</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-section {
+            border-top: 1px solid #e0e0e0;
+            padding-top: 15px;
+            margin-top: 15px;
+        }
+        .control-section:first-child {
+            border-top: none;
+            padding-top: 0;
+            margin-top: 0;
+        }
+        .section-title {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 10px;
+        }
+        label {
+            display: inline-block;
+            width: 150px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            width: 300px;
+        }
+        .value-display {
+            display: inline-block;
+            width: 70px;
+            text-align: center;
+            background: #e0e0e0;
+            padding: 2px 5px;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        canvas {
+            max-height: 500px;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2196f3;
+        }
+        .stats {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 15px;
+            font-family: monospace;
+        }
+        .highlight {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+        .formula {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ff9800;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>外骨骼力矩系数滤波函数可视化（分段幂函数）</h1>
+
+    <div class="info">
+        <strong>使用说明：</strong>
+        <ul>
+            <li>此滤波器用于外骨骼力矩控制，实现非线性映射</li>
+            <li>正向力矩（辅助）被放大，负向力矩（阻力）被抑制</li>
+            <li>小信号被抑制，大信号被放大，提高信噪比</li>
+            <li class="highlight">红色虚线表示输入/输出限制范围</li>
+        </ul>
+    </div>
+
+    <div class="formula">
+        <strong>滤波公式：</strong><br>
+        正向 (x ≥ 0): y = sign(x) × |x/input_limit|^power_pos × gain_pos × input_limit<br>
+        负向 (x < 0): y = -|x/input_limit|^power_neg × gain_neg × input_limit<br>
+        输出限幅: y = clip(y, -output_limit, output_limit)
+    </div>
+
+    <div class="controls">
+        <div class="control-section">
+            <div class="section-title">📊 范围限制参数</div>
+            <div class="control-group">
+                <label for="inputLimit">输入限制：</label>
+                <input type="range" id="inputLimit" min="0.1" max="1.0" step="0.05" value="0.4">
+                <span class="value-display" id="inputLimitValue">0.40</span>
+            </div>
+            <div class="control-group">
+                <label for="outputLimit">输出限制：</label>
+                <input type="range" id="outputLimit" min="0.1" max="1.5" step="0.05" value="0.6">
+                <span class="value-display" id="outputLimitValue">0.60</span>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <div class="section-title">⚡ 幂次参数（控制曲线形状）</div>
+            <div class="control-group">
+                <label for="powerPos">正向幂次：</label>
+                <input type="range" id="powerPos" min="0.5" max="3" step="0.1" value="1.5">
+                <span class="value-display" id="powerPosValue">1.5</span>
+            </div>
+            <div class="control-group">
+                <label for="powerNeg">负向幂次：</label>
+                <input type="range" id="powerNeg" min="0.1" max="5.0" step="0.1" value="2.5">
+                <span class="value-display" id="powerNegValue">2.5</span>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <div class="section-title">📈 增益参数（控制放大/抑制程度）</div>
+            <div class="control-group">
+                <label for="gainPos">正向增益：</label>
+                <input type="range" id="gainPos" min="1" max="3" step="0.1" value="1.8">
+                <span class="value-display" id="gainPosValue">1.8</span>
+            </div>
+            <div class="control-group">
+                <label for="gainNeg">负向增益：</label>
+                <input type="range" id="gainNeg" min="0.1" max="4.0" step="0.05" value="0.8">
+                <span class="value-display" id="gainNegValue">0.80</span>
+            </div>
+        </div>
+
+        <div class="stats" id="stats">
+            <strong>🔍 关键点输出值：</strong><br>
+            <div style="display: flex; justify-content: space-between;">
+                <div>
+                    输入 +<span id="maxInputDisplay">0.40</span> → 输出: <span id="maxOutput">--</span><br>
+                    输入 +<span id="halfMaxInputDisplay">0.20</span> → 输出: <span id="halfMaxOutput">--</span><br>
+                    输入 +<span id="quarterMaxInputDisplay">0.10</span> → 输出: <span id="quarterMaxOutput">--</span>
+                </div>
+                <div>
+                    输入 -<span id="minInputDisplay">0.40</span> → 输出: <span id="minOutput">--</span><br>
+                    输入 -<span id="halfMinInputDisplay">0.20</span> → 输出: <span id="halfMinOutput">--</span><br>
+                    输入 -<span id="quarterMinInputDisplay">0.10</span> → 输出: <span id="quarterMinOutput">--</span>
+                </div>
+            </div>
+            <br>
+            <strong>放大倍率：</strong>
+            正向最大: <span id="posRatio">--</span>x |
+            负向最大: <span id="negRatio">--</span>x
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="chart"></canvas>
+    </div>
+
+    <script>
+        // 分段幂函数滤波
+        function powerFilter(x, params) {
+            // 输入限幅
+            x = Math.max(-params.inputLimit, Math.min(params.inputLimit, x));
+
+            // 归一化到[-1, 1]
+            const x_norm = x / params.inputLimit;
+            let output_norm;
+
+            if (x >= 0) {
+                // 正向：放大
+                output_norm = Math.sign(x_norm) * Math.pow(Math.abs(x_norm), params.powerPos) * params.gainPos;
+            } else {
+                // 负向：抑制
+                output_norm = -Math.pow(Math.abs(x_norm), params.powerNeg) * params.gainNeg;
+            }
+
+            // 反归一化
+            const output = output_norm * params.inputLimit;
+
+            // 输出限幅
+            return Math.max(-params.outputLimit, Math.min(params.outputLimit, output));
+        }
+
+        // 生成数据点
+        function generateData() {
+            const params = getParameters();
+            const xValues = [];
+            const yLinear = [];
+            const yFiltered = [];
+
+            // 生成数据点，范围稍微超出输入限制以显示限幅效果
+            const xMin = -params.inputLimit * 1.2;
+            const xMax = params.inputLimit * 1.2;
+            const step = (xMax - xMin) / 200;
+
+            for (let x = xMin; x <= xMax; x += step) {
+                xValues.push(x);
+                // 线性参考线（在输入限制内）
+                const linearY = Math.max(-params.inputLimit, Math.min(params.inputLimit, x));
+                yLinear.push(linearY);
+                // 滤波后的值
+                yFiltered.push(powerFilter(x, params));
+            }
+
+            // 更新统计信息
+            updateStats(params);
+
+            return { xValues, yLinear, yFiltered };
+        }
+
+        // 更新统计信息
+        function updateStats(params) {
+            // 更新输入显示值
+            document.getElementById('maxInputDisplay').textContent = params.inputLimit.toFixed(2);
+            document.getElementById('halfMaxInputDisplay').textContent = (params.inputLimit * 0.5).toFixed(2);
+            document.getElementById('quarterMaxInputDisplay').textContent = (params.inputLimit * 0.25).toFixed(2);
+            document.getElementById('minInputDisplay').textContent = params.inputLimit.toFixed(2);
+            document.getElementById('halfMinInputDisplay').textContent = (params.inputLimit * 0.5).toFixed(2);
+            document.getElementById('quarterMinInputDisplay').textContent = (params.inputLimit * 0.25).toFixed(2);
+
+            // 计算输出值
+            const maxOut = powerFilter(params.inputLimit, params);
+            const halfMaxOut = powerFilter(params.inputLimit * 0.5, params);
+            const quarterMaxOut = powerFilter(params.inputLimit * 0.25, params);
+            const minOut = powerFilter(-params.inputLimit, params);
+            const halfMinOut = powerFilter(-params.inputLimit * 0.5, params);
+            const quarterMinOut = powerFilter(-params.inputLimit * 0.25, params);
+
+            document.getElementById('maxOutput').textContent = maxOut.toFixed(3);
+            document.getElementById('halfMaxOutput').textContent = halfMaxOut.toFixed(3);
+            document.getElementById('quarterMaxOutput').textContent = quarterMaxOut.toFixed(3);
+            document.getElementById('minOutput').textContent = minOut.toFixed(3);
+            document.getElementById('halfMinOutput').textContent = halfMinOut.toFixed(3);
+            document.getElementById('quarterMinOutput').textContent = quarterMinOut.toFixed(3);
+
+            // 计算放大倍率
+            const posRatio = maxOut / params.inputLimit;
+            const negRatio = Math.abs(minOut / params.inputLimit);
+            document.getElementById('posRatio').textContent = posRatio.toFixed(2);
+            document.getElementById('negRatio').textContent = negRatio.toFixed(2);
+        }
+
+        // 获取当前参数
+        function getParameters() {
+            return {
+                inputLimit: parseFloat(document.getElementById('inputLimit').value),
+                outputLimit: parseFloat(document.getElementById('outputLimit').value),
+                powerPos: parseFloat(document.getElementById('powerPos').value),
+                powerNeg: parseFloat(document.getElementById('powerNeg').value),
+                gainPos: parseFloat(document.getElementById('gainPos').value),
+                gainNeg: parseFloat(document.getElementById('gainNeg').value)
+            };
+        }
+
+        // 初始化图表
+        const ctx = document.getElementById('chart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: '原始（线性）',
+                        data: [],
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        showLine: true,
+                        tension: 0
+                    },
+                    {
+                        label: '滤波后（非线性）',
+                        data: [],
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 0,
+                        showLine: true,
+                        tension: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: '力矩系数滤波效果对比'
+                    },
+                    legend: {
+                        display: true
+                    },
+                    annotation: {
+                        annotations: {}
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: '输入力矩系数'
+                        },
+                        grid: {
+                            color: function(context) {
+                                if (Math.abs(context.tick.value) < 0.001) {
+                                    return '#000';
+                                }
+                                return 'rgba(0, 0, 0, 0.1)';
+                            }
+                        },
+                        min: -0.8,
+                        max: 0.8
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: '输出力矩系数'
+                        },
+                        grid: {
+                            color: function(context) {
+                                if (Math.abs(context.tick.value) < 0.001) {
+                                    return '#000';
+                                }
+                                return 'rgba(0, 0, 0, 0.1)';
+                            }
+                        },
+                        min: -0.8,
+                        max: 0.8
+                    }
+                }
+            }
+        });
+
+        // 创建限制线的插件
+        const limitLinesPlugin = {
+            id: 'limitLines',
+            afterDraw: function(chart) {
+                const ctx = chart.ctx;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+                const params = getParameters();
+
+                ctx.save();
+
+                // 绘制输入限制线（垂直）
+                ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+
+                // 正输入限制
+                ctx.beginPath();
+                const xPosInput = xAxis.getPixelForValue(params.inputLimit);
+                ctx.moveTo(xPosInput, yAxis.top);
+                ctx.lineTo(xPosInput, yAxis.bottom);
+                ctx.stroke();
+
+                // 负输入限制
+                ctx.beginPath();
+                const xNegInput = xAxis.getPixelForValue(-params.inputLimit);
+                ctx.moveTo(xNegInput, yAxis.top);
+                ctx.lineTo(xNegInput, yAxis.bottom);
+                ctx.stroke();
+
+                // 绘制输出限制线（水平）
+                ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)';
+
+                // 正输出限制
+                ctx.beginPath();
+                const yPosOutput = yAxis.getPixelForValue(params.outputLimit);
+                ctx.moveTo(xAxis.left, yPosOutput);
+                ctx.lineTo(xAxis.right, yPosOutput);
+                ctx.stroke();
+
+                // 负输出限制
+                ctx.beginPath();
+                const yNegOutput = yAxis.getPixelForValue(-params.outputLimit);
+                ctx.moveTo(xAxis.left, yNegOutput);
+                ctx.lineTo(xAxis.right, yNegOutput);
+                ctx.stroke();
+
+                ctx.setLineDash([]);
+
+                // 添加标签
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+                ctx.font = '12px Arial';
+                ctx.fillText(`输入限制: ±${params.inputLimit.toFixed(2)}`, xPosInput + 5, yAxis.top + 15);
+
+                ctx.fillStyle = 'rgba(0, 0, 255, 0.7)';
+                ctx.fillText(`输出限制: ±${params.outputLimit.toFixed(2)}`, xAxis.right - 100, yPosOutput - 5);
+
+                ctx.restore();
+            }
+        };
+
+        // 注册插件
+        Chart.register(limitLinesPlugin);
+
+        // 更新图表
+        function updateChart() {
+            const data = generateData();
+            const params = getParameters();
+
+            // 动态调整图表范围
+            const xRange = Math.max(params.inputLimit * 1.3, 0.5);
+            const yRange = Math.max(params.outputLimit * 1.3, 0.5);
+            chart.options.scales.x.min = -xRange;
+            chart.options.scales.x.max = xRange;
+            chart.options.scales.y.min = -yRange;
+            chart.options.scales.y.max = yRange;
+
+            // 创建坐标点对象数组
+            const linearPoints = [];
+            const filteredPoints = [];
+
+            for(let i = 0; i < data.xValues.length; i++) {
+                linearPoints.push({
+                    x: data.xValues[i],
+                    y: data.yLinear[i]
+                });
+                filteredPoints.push({
+                    x: data.xValues[i],
+                    y: data.yFiltered[i]
+                });
+            }
+
+            chart.data.datasets[0].data = linearPoints;
+            chart.data.datasets[1].data = filteredPoints;
+            chart.update();
+        }
+
+        // 绑定滑块事件
+        const sliders = [
+            { id: 'inputLimit', displayId: 'inputLimitValue', decimals: 2 },
+            { id: 'outputLimit', displayId: 'outputLimitValue', decimals: 2 },
+            { id: 'powerPos', displayId: 'powerPosValue', decimals: 1 },
+            { id: 'powerNeg', displayId: 'powerNegValue', decimals: 1 },
+            { id: 'gainPos', displayId: 'gainPosValue', decimals: 1 },
+            { id: 'gainNeg', displayId: 'gainNegValue', decimals: 2 }
+        ];
+
+        sliders.forEach(slider => {
+            const element = document.getElementById(slider.id);
+            const display = document.getElementById(slider.displayId);
+
+            if (element) {
+                element.addEventListener('input', function() {
+                    display.textContent = parseFloat(this.value).toFixed(slider.decimals);
+                    updateChart();
+                });
+            }
+        });
+
+        // 初始化
+        updateChart();
+    </script>
+</body>
+</html>
