@@ -9,7 +9,7 @@ model_path = os.path.join("models", "p1+p2_finalmodel.tar")
 # Sliding Window Configuration for Training
 use_sliding_window = True  # Set to True to use sliding window for training, False to use original mode
 window_size = 280  # Size of each window (number of time steps)
-window_stride = 10  # Stride for sliding window (how many steps to slide)
+window_stride = 20  # Stride for sliding window (how many steps to slide)
 min_trial_length = 280  # Minimum trial length required (should be >= window_size)
 
 # ========== 数据集划分配置 ==========
@@ -18,12 +18,12 @@ split_mode = "manual"  # or "random"
 
 # 手动划分时使用的训练和测试数据目录
 train_data_dirs = [
-    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    "/home/num2/datasets/EXO/Phase3_Parsed/val",
     # 可以添加更多训练目录
 ]
 
 val_dataset = [
-    "/home/num2/datasets/EXO/Phase3_Parsed/val",
+    "/home/num2/datasets/EXO/Phase3_Parsed/test",
     # 可以添加更多测试目录
 ]
 

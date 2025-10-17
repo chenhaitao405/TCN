@@ -249,7 +249,7 @@ class DataManager:
 
         # Check if we should use sliding window for training
         use_sliding_window_train = getattr(config, 'use_sliding_window', False)
-        use_sliding_window_test = False  # Always use original mode for testing
+        use_sliding_window_test = True  # Always use original mode for testing
 
         # Load training dataset
         print("\n[Training Dataset]")
