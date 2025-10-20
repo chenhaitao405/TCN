@@ -406,7 +406,7 @@ def main():
     print(f"Using pretrained weights: {args.use_pretrained}")
 
     model_loader = ModelLoader()
-    model, model_info = model_loader.load_pretrained_model(
+    model, model_info = model_loader.load_model(
         config.model_path,
         device,
         config,

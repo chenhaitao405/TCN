@@ -318,7 +318,7 @@ class DataManager:
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            num_workers=32,
+            num_workers=16,
             pin_memory=True,  # 重要！预固定内存，加速GPU传输
             persistent_workers=True,  # 保持worker进程
             shuffle=False,  #是否随机打乱
@@ -327,7 +327,7 @@ class DataManager:
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
-            num_workers=32,
+            num_workers=16,
             pin_memory=True,  # 重要！预固定内存，加速GPU传输
             persistent_workers=True,  # 保持worker进程
             shuffle=False,  #是否随机打乱
