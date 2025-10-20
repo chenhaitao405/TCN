@@ -28,6 +28,9 @@ def validate_model(model, dataloader, device, config, label_names, dataset):
         for batch_idx, batch_data in enumerate(pbar):
             # Unpack batch data (now includes trial names)
             inputs, labels, seq_lengths, trial_names = batch_data
+            use_sliding_window = getattr(config, 'use_sliding_window', False)
+            if use_sliding_window:
+                trial_names = trial_names['trial_name']
             inputs, labels = inputs.to(device), labels.to(device)
             batch_size = inputs.shape[0]
 
@@ -235,7 +238,7 @@ def main():
     # Load model
     print(f"\nLoading model from: {args.model_path}")
     model_loader = ModelLoader()
-    model, model_info = model_loader.load_pretrained_model(
+    model, model_info = model_loader.load_model(
         args.model_path, device, config, load_weights=True
     )
     print("Model loaded successfully!")
@@ -247,28 +250,45 @@ def main():
 
     print(f"\nValidating on labels: {label_names}")
 
+
     # Load dataset
+    use_sliding_window = getattr(config, 'use_sliding_window', False)
     data_manager = DataManager()
-    full_dataset = data_manager.load_datasets(config, device)
+    full_dataset = data_manager.load_datasets(config, device, use_sliding_window=use_sliding_window)
 
-    # Get valid indices
-    valid_indices = data_manager.get_or_compute_valid_indices(full_dataset, config)
+    # Check if using sliding window mode
 
-    # Apply max_samples limit if specified
-    if args.max_samples and len(valid_indices) > args.max_samples:
-        valid_indices = valid_indices[:args.max_samples]
-        print(f"Limited to {args.max_samples} samples for validation")
+    if use_sliding_window:
+        # Get valid indices
+        filtered_dataset = full_dataset
+        val_loader = DataLoader(
+            filtered_dataset,
+            batch_size=args.batch_size,
+            num_workers=16,
+            pin_memory=True,  # 重要！预固定内存，加速GPU传输
+            persistent_workers=True,  # 保持worker进程
+            shuffle=False,  #是否随机打乱
+        )
 
-    # Create filtered dataset
-    filtered_dataset = Subset(full_dataset, valid_indices)
+    else:
+        # Get valid indices
+        valid_indices = data_manager.get_or_compute_valid_indices(full_dataset, config)
 
-    # Create dataloader
-    val_loader = DataLoader(
-        filtered_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        collate_fn=lambda x: data_manager.collate_function(x, device)
-    )
+        # Apply max_samples limit if specified
+        if args.max_samples and len(valid_indices) > args.max_samples:
+            valid_indices = valid_indices[:args.max_samples]
+            print(f"Limited to {args.max_samples} samples for validation")
+
+        # Create filtered dataset
+        filtered_dataset = Subset(full_dataset, valid_indices)
+
+        # Create dataloader
+        val_loader = DataLoader(
+            filtered_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            collate_fn=lambda x: data_manager.collate_function(x, device)
+        )
 
     # Validate model - pass dataset for action extraction
     print(f"\nValidating model on {len(filtered_dataset)} trials...")

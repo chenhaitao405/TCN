@@ -286,15 +286,17 @@ class DataManager:
             config, device, config.val_dataset,
             use_sliding_window=use_sliding_window_test
         )
-        test_valid_indices = DataManager.get_or_compute_valid_indices(
-            test_full_dataset, config, cache_suffix='_test'
-        )
+        if use_sliding_window_test:
+            test_dataset = test_full_dataset
+        else:
+            test_valid_indices = DataManager.get_or_compute_valid_indices(
+                test_full_dataset, config, cache_suffix='_test'
+            )
+            if max_samples and len(test_valid_indices) > max_samples:
+                test_valid_indices = test_valid_indices[:max_samples]
+                print(f"Limited test set to {max_samples} samples")
 
-        if max_samples and len(test_valid_indices) > max_samples:
-            test_valid_indices = test_valid_indices[:max_samples]
-            print(f"Limited test set to {max_samples} samples")
-
-        test_dataset = Subset(test_full_dataset, test_valid_indices)
+            test_dataset = Subset(test_full_dataset, test_valid_indices)
 
         print("\n" + "=" * 50)
         print(f"Final dataset split (manual):")

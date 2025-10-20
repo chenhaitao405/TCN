@@ -55,7 +55,7 @@ class BoxCoder(nn.Module):
    
 	def meshgrid(self, boxes): # Input: pred_boxes. To get the sampling location
 		B, patch_count, C = boxes.shape[0], boxes.shape[1], boxes.shape[2]
-		channel_boxes = torch.zeros((boxes.shape[0], boxes.shape[1], 2)).to(self.device)
+		channel_boxes = torch.zeros((boxes.shape[0], boxes.shape[1], 2)).to(boxes.device)
 		channel_boxes[:, :, 1] = 1.0
 		xs = boxes.view(B*patch_count, C, 2)
 		xs = torch.nn.functional.interpolate(xs, size=self.patch_size, mode='linear', align_corners=True)
