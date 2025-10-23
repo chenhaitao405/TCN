@@ -309,7 +309,7 @@ def main():
         plots = []
 
         # Metrics summary bar plot
-        plot_path = visualizer.plot_metrics_summary(metrics)
+        plot_path = visualizer.plot_metrics_summary(metrics,config)
         plots.append(plot_path)
         print(f"  - Metrics summary saved to: {plot_path}")
 
@@ -320,7 +320,7 @@ def main():
             print(f"  - Per-action metrics saved to: {plot_path}")
 
         # Predictions vs actual scatter plots
-        plot_path = visualizer.plot_predictions_vs_actual(metrics)
+        plot_path = visualizer.plot_predictions_vs_actual(metrics,config)
         plots.append(plot_path)
         print(f"  - Predictions vs actual saved to: {plot_path}")
 

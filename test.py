@@ -260,7 +260,7 @@ def main():
     print(f"成功加载 {len(data)} 行数据")
 
     # 滤波参数
-    cutoff_freq = 10.0  # Hz
+    cutoff_freq = 3.0  # Hz
     sampling_rate = 200.0  # Hz
 
     print(f"\n开始滤波处理...")
