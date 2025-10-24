@@ -2,7 +2,7 @@ import os
 
 # relative file path to trained model
 task_name = "10Action_thighkneeonly_thigh_p1p2"  #sensor_trainData_valData
-model_path = "checkpoints/train_manual20stride_shufflekneeonly_thigh_p1p2_20250912_115324/final_model.tar"
+model_path = "checkpoints/train_baseline_manual_windows_thigh_p1p2_20251017_162149/best_model.tar"
 
 # relative path to data
 data_dirs = [
