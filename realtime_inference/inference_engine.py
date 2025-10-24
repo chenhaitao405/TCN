@@ -32,7 +32,7 @@ class InferenceEngine:
         print(f"Using device: {self.device}")
 
         # 加载模型
-        self.model, self.model_info = self.model_loader.load_pretrained_model(
+        self.model, self.model_info = self.model_loader.load_model(
             self.config.model_path,
             self.device,
             self.config,

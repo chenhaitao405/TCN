@@ -17,7 +17,7 @@ side = ["l"]
 
 # ========== 滑动窗口配置 ==========
 # Sliding Window Configuration for Training
-use_sliding_window = False  # Set to True to use sliding window for training, False to use original mode
+use_sliding_window = True  # Set to True to use sliding window for training, False to use original mode
 window_size = 280  # Size of each window (number of time steps)
 window_stride = 20  # Stride for sliding window (how many steps to slide)
 min_trial_length = 280  # Minimum trial length required (should be >= window_size)

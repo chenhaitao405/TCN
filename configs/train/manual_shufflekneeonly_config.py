@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 # relative file path to trained model
-task_name = "baseline_manual_windows_thigh_p1p2"  #sensor_trainData_valData
+task_name = "convTime_manual_windows_thigh_p1p2"  #sensor_trainData_valData
 
 # ========== 模型加载 ==========
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")

@@ -167,13 +167,13 @@ class ModelLoader:
             'target_window': 280,
             'patch_len': 32,
             'stride': 16,
-            'n_layers': 3,
+            'n_layers': 4,
             'd_model': 64,
             'd_ff': 128,
             'dropout': 0.3,
             'act': "relu",
             'enable_res_param': False,
-            'dw_ks': [7, 7, 13, 13, 19, 19],  # Depth-wise kernel sizes for each layer
+            'dw_ks': [5, 5, 7, 7, 13, 13, 19, 19],  # Depth-wise kernel sizes for each layer
             'norm': 'batch',
             're_param': False,
             'deformable': True,
