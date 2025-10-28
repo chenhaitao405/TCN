@@ -1,8 +1,26 @@
 import os
-
+import numpy as np
 # relative file path to trained model
 task_name = "10Action_thighkneeonly_thigh_p1p2"  #sensor_trainData_valData
 model_path = "checkpoints/train_baseline_manual_windows_thigh_p1p2_20251017_162149/best_model.tar"
+
+# ========== 滑动窗口配置 ==========
+# Sliding Window Configuration for Training
+use_sliding_window = True  # Set to True to use sliding window for training, False to use original mode
+window_size = 280  # Size of each window (number of time steps)
+window_stride = 20  # Stride for sliding window (how many steps to slide)
+min_trial_length = 280  # Minimum trial length required (should be >= window_size)
+
+# ========== 模型加载 ==========
+model_path = os.path.join("models", "p1+p2_finalmodel.tar")
+
+# 原始 center 形状: (1, 25, 1)
+center = np.array([[[-1.3138794898986816], [1.0175517797470093], [1.0200027227401733], [-3.7354042530059814], [10.356223106384277], [-1.115983247756958], [-2.3052029609680176], [-1.2783820629119873], [4.49326753616333], [-2.2510268688201904], [9.043442726135254], [1.0297681093215942], [0.7113392353057861], [-0.42998769879341125], [0.7253568172454834], [2.6528778076171875], [8.714276313781738], [-0.28184762597084045], [-0.021478787064552307], [0.03748692199587822], [6.203179836273193], [-27.908424377441406], [-0.10620186477899551], [-30.666257858276367], [-0.13483266532421112]]])
+# 原始 scale 形状: (1, 25, 1)
+scale = np.array([[[64.02909851074219], [71.5345458984375], [141.70074462890625], [8.845449447631836], [6.624897480010986], [4.410506725311279], [38.37006759643555], [68.55548095703125], [122.89159393310547], [5.968291282653809], [4.936514377593994], [2.609605073928833], [21.314773559570312], [45.228126525878906], [81.4139633178711], [3.980790376663208], [4.433416366577148], [1.8335528373718262], [0.19110994040966034], [0.0765497237443924], [5.316965579986572], [27.2789306640625], [60.31145477294922], [27.82839012145996], [107.17118835449219]]])
+
+model_mode = "TCN" #"TCN" or "ConvTimeNet"
+
 
 # relative path to data
 data_dirs = [

@@ -250,33 +250,35 @@ class ValidationVisualizer:
                          f'{v:.3f}\n(n={n})', ha='center', va='bottom', fontsize=8)
 
             # R² plot
-            bars2 = ax2.bar(x, r2_means, yerr=r2_stds, capsize=5, alpha=0.7)
-            ax2.set_xlabel('Action Type', fontsize=12)
-            ax2.set_ylabel('R² Score', fontsize=12)
-            ax2.set_title('R² Score by Action Type', fontsize=14)
-            ax2.set_xticks(x)
-            ax2.set_xticklabels(actions, rotation=45, ha='right')
-            ax2.set_ylim([0, 1.1])
-            ax2.axhline(y=0.5, color='red', linestyle='--', alpha=0.5)
-            ax2.axhline(y=0.7, color='orange', linestyle='--', alpha=0.5)
-            ax2.axhline(y=0.9, color='green', linestyle='--', alpha=0.5)
-            ax2.grid(True, alpha=0.3, axis='y')
+            using_windowing_bool = getattr(config, 'use_sliding_window', False)
+            if not using_windowing_bool:
+                bars2 = ax2.bar(x, r2_means, yerr=r2_stds, capsize=5, alpha=0.7)
+                ax2.set_xlabel('Action Type', fontsize=12)
+                ax2.set_ylabel('R² Score', fontsize=12)
+                ax2.set_title('R² Score by Action Type', fontsize=14)
+                ax2.set_xticks(x)
+                ax2.set_xticklabels(actions, rotation=45, ha='right')
+                ax2.set_ylim([0, 1.1])
+                ax2.axhline(y=0.5, color='red', linestyle='--', alpha=0.5)
+                ax2.axhline(y=0.7, color='orange', linestyle='--', alpha=0.5)
+                ax2.axhline(y=0.9, color='green', linestyle='--', alpha=0.5)
+                ax2.grid(True, alpha=0.3, axis='y')
 
-            # Color bars based on R² value
-            for bar, r2 in zip(bars2, r2_means):
-                if r2 >= 0.9:
-                    bar.set_color('green')
-                elif r2 >= 0.7:
-                    bar.set_color('orange')
-                elif r2 >= 0.5:
-                    bar.set_color('yellow')
-                else:
-                    bar.set_color('red')
+                # Color bars based on R² value
+                for bar, r2 in zip(bars2, r2_means):
+                    if r2 >= 0.9:
+                        bar.set_color('green')
+                    elif r2 >= 0.7:
+                        bar.set_color('orange')
+                    elif r2 >= 0.5:
+                        bar.set_color('yellow')
+                    else:
+                        bar.set_color('red')
 
-            # Add value labels
-            for i, (v, n) in enumerate(zip(r2_means, n_samples)):
-                ax2.text(i, v + (r2_stds[i] if i < len(r2_stds) else 0),
-                         f'{v:.3f}', ha='center', va='bottom', fontsize=8)
+                # Add value labels
+                for i, (v, n) in enumerate(zip(r2_means, n_samples)):
+                    ax2.text(i, v + (r2_stds[i] if i < len(r2_stds) else 0),
+                             f'{v:.3f}', ha='center', va='bottom', fontsize=8)
 
             plt.tight_layout()
             save_path = os.path.join(self.plots_dir, f'per_action_metrics_{label_name}.png')
@@ -345,7 +347,7 @@ class ValidationVisualizer:
 
         return save_path
 
-    def plot_metrics_summary(self, metrics: Any) -> str:
+    def plot_metrics_summary(self, metrics: Any, config) -> str:
         """Create bar plots for RMSE and R² per label."""
         summary = metrics.get_summary()
 
@@ -382,36 +384,37 @@ class ValidationVisualizer:
         # Add value labels on bars
         for i, v in enumerate(rmse_means):
             ax1.text(i, v + rmse_stds[i], f'{v:.4f}', ha='center', va='bottom', fontsize=9)
+        using_windowing_bool = getattr(config, 'use_sliding_window', False)
+        if not using_windowing_bool:
+            # R² plot
+            ax2 = axes[1]
+            bars = ax2.bar(x, r2_means, yerr=r2_stds, capsize=5, alpha=0.7, color='green')
+            ax2.set_xlabel('Label')
+            ax2.set_ylabel('R² Score')
+            ax2.set_title('R² Score per Label')
+            ax2.set_xticks(x)
+            ax2.set_xticklabels(labels, rotation=45, ha='right')
+            ax2.set_ylim([0, 1.1])
+            ax2.axhline(y=0.5, color='red', linestyle='--', alpha=0.5, label='R²=0.5')
+            ax2.axhline(y=0.7, color='orange', linestyle='--', alpha=0.5, label='R²=0.7')
+            ax2.axhline(y=0.9, color='green', linestyle='--', alpha=0.5, label='R²=0.9')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
 
-        # R² plot
-        ax2 = axes[1]
-        bars = ax2.bar(x, r2_means, yerr=r2_stds, capsize=5, alpha=0.7, color='green')
-        ax2.set_xlabel('Label')
-        ax2.set_ylabel('R² Score')
-        ax2.set_title('R² Score per Label')
-        ax2.set_xticks(x)
-        ax2.set_xticklabels(labels, rotation=45, ha='right')
-        ax2.set_ylim([0, 1.1])
-        ax2.axhline(y=0.5, color='red', linestyle='--', alpha=0.5, label='R²=0.5')
-        ax2.axhline(y=0.7, color='orange', linestyle='--', alpha=0.5, label='R²=0.7')
-        ax2.axhline(y=0.9, color='green', linestyle='--', alpha=0.5, label='R²=0.9')
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
+            # Add value labels on bars
+            for i, v in enumerate(r2_means):
+                ax2.text(i, v + r2_stds[i], f'{v:.3f}', ha='center', va='bottom', fontsize=9)
 
-        # Add value labels on bars
-        for i, v in enumerate(r2_means):
-            ax2.text(i, v + r2_stds[i], f'{v:.3f}', ha='center', va='bottom', fontsize=9)
-
-        # Color bars based on R² value
-        for bar, r2 in zip(bars, r2_means):
-            if r2 >= 0.9:
-                bar.set_color('green')
-            elif r2 >= 0.7:
-                bar.set_color('orange')
-            elif r2 >= 0.5:
-                bar.set_color('yellow')
-            else:
-                bar.set_color('red')
+            # Color bars based on R² value
+            for bar, r2 in zip(bars, r2_means):
+                if r2 >= 0.9:
+                    bar.set_color('green')
+                elif r2 >= 0.7:
+                    bar.set_color('orange')
+                elif r2 >= 0.5:
+                    bar.set_color('yellow')
+                else:
+                    bar.set_color('red')
 
         plt.tight_layout()
         save_path = os.path.join(self.plots_dir, 'metrics_summary.png')
@@ -420,7 +423,7 @@ class ValidationVisualizer:
 
         return save_path
 
-    def plot_predictions_vs_actual(self, metrics: Any, max_samples: int = 1000) -> str:
+    def plot_predictions_vs_actual(self, metrics: Any, config,max_samples: int = 1000) -> str:
         """Create scatter plots of predictions vs actual values for each label."""
         n_labels = len(metrics.label_names)
         n_cols = min(3, n_labels)

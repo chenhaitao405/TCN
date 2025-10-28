@@ -249,7 +249,7 @@ class DataManager:
 
         # Check if we should use sliding window for training
         use_sliding_window_train = getattr(config, 'use_sliding_window', False)
-        use_sliding_window_test = False  # Always use original mode for testing
+        use_sliding_window_test = True  # Always use original mode for testing
 
         # Load training dataset
         print("\n[Training Dataset]")
@@ -286,15 +286,17 @@ class DataManager:
             config, device, config.val_dataset,
             use_sliding_window=use_sliding_window_test
         )
-        test_valid_indices = DataManager.get_or_compute_valid_indices(
-            test_full_dataset, config, cache_suffix='_test'
-        )
+        if use_sliding_window_test:
+            test_dataset = test_full_dataset
+        else:
+            test_valid_indices = DataManager.get_or_compute_valid_indices(
+                test_full_dataset, config, cache_suffix='_test'
+            )
+            if max_samples and len(test_valid_indices) > max_samples:
+                test_valid_indices = test_valid_indices[:max_samples]
+                print(f"Limited test set to {max_samples} samples")
 
-        if max_samples and len(test_valid_indices) > max_samples:
-            test_valid_indices = test_valid_indices[:max_samples]
-            print(f"Limited test set to {max_samples} samples")
-
-        test_dataset = Subset(test_full_dataset, test_valid_indices)
+            test_dataset = Subset(test_full_dataset, test_valid_indices)
 
         print("\n" + "=" * 50)
         print(f"Final dataset split (manual):")
@@ -318,7 +320,7 @@ class DataManager:
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
-            num_workers=32,
+            num_workers=16,
             pin_memory=True,  # 重要！预固定内存，加速GPU传输
             persistent_workers=True,  # 保持worker进程
             shuffle=False,  #是否随机打乱
@@ -327,7 +329,7 @@ class DataManager:
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
-            num_workers=32,
+            num_workers=16,
             pin_memory=True,  # 重要！预固定内存，加速GPU传输
             persistent_workers=True,  # 保持worker进程
             shuffle=False,  #是否随机打乱
