@@ -2,25 +2,7 @@ import os
 import numpy as np
 
 # relative file path to trained model
-task_name = "ConvTimeNet1"  #sensor_trainData_valData
-model_path = os.path.join("models", "p1+p2_finalmodel.tar")
-
-# relative path to data
-data_dirs = [
-    # "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
-]
-
-# corresponding leg (model is not dependent on side)
-side = ["l"]
-
-
-# ========== 滑动窗口配置 ==========
-# Sliding Window Configuration for Training
-use_sliding_window = False  # Set to True to use sliding window for training, False to use original mode
-window_size = 280  # Size of each window (number of time steps)
-window_stride = 20  # Stride for sliding window (how many steps to slide)
-min_trial_length = 280  # Minimum trial length required (should be >= window_size)
+task_name = "shank+thighIMU"  #sensor_trainData_valData
 
 # ========== 模型加载 ==========
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
@@ -32,6 +14,45 @@ scale = np.array([[[64.02909851074219], [71.5345458984375], [141.70074462890625]
 
 model_mode = "TCN" #"TCN" or "ConvTimeNet"
 
+data_dirs = [
+    # "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+]
+
+# ========== 滑动窗口配置 ==========
+# Sliding Window Configuration for Training
+use_sliding_window = False  # Set to True to use sliding window for training, False to use original mode
+window_size = 280  # Size of each window (number of time steps)
+window_stride = 20  # Stride for sliding window (how many steps to slide)
+min_trial_length = 280  # Minimum trial length required (should be >= window_size)
+
+# ========== 数据集划分配置 ==========
+# split_mode: "manual" 使用手动划分（按目录）, "random" 使用随机划分
+split_mode = "manual"  # or "random"
+
+# 手动划分时使用的训练和测试数据目录
+train_data_dirs = [
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    # 可以添加更多训练目录
+]
+
+val_dataset = [
+    "/home/num2/datasets/EXO/Phase3_Parsed/val",
+    # 可以添加更多测试目录
+]
+
+# 随机划分时使用的数据目录（保留向后兼容）
+data_dirs = [
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+]
+
+# 验证集比例（仅在random模式下使用）
+val_split = 0.1
+
+
+# corresponding leg (model is not dependent on side)
+side = ["r","l"]
 
 
 # corresponding model input names in dataset (* is substituted with side)
@@ -45,15 +66,15 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 				"hip_angle_*", "hip_angle_*_velocity_filt",#21
 				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
 
-sensor_pick = [12,13,14,15,16,17,23,24,]
+sensor_pick = [6,7,8,9,10,11,12,13,14,15,16,17,23,24,]
 
 action_patterns = [
 	# === 按论文中重要性排序的动作筛选 ===
 	# r"^normal_walk_.*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差）
-	r"^normal_walk_.*_(1-2|1-8|2-0|2-5|skip).*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差,排除）
+	r"^normal_walk_.*_(shuffle|0-6|1-2|1-8|2-0|2-5|skip).*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差,排除）
 	r"^poses_.*",  # 2. Standing poses
 	# r"^dynamic_walk_.*(high-knees|butt-kicks).*",  # 3. Calisthenics (high-knees, butt-kicks)
-	r"^push_.*",  # 4. Push and pull recovery
+	# r"^push_.*",  # 4. Push and pull recovery
 	r"^jump_.*_(hop|vertical).*",  # 5. Jump in place
 	r"^turn_and_step_.*",  # 6. Turn
 	r"^cutting_.*",  # 7. Cut
