@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 # relative file path to trained model
-task_name = "convTime_manual_windows_thigh_p1p2"  #sensor_trainData_valData
+task_name = "shank+thighIMU"  #sensor_trainData_valData
 
 # ========== 模型加载 ==========
 model_path = os.path.join("models", "p1+p2_finalmodel.tar")
@@ -12,7 +12,7 @@ center = np.array([[[-1.3138794898986816], [1.0175517797470093], [1.020002722740
 # 原始 scale 形状: (1, 25, 1)
 scale = np.array([[[64.02909851074219], [71.5345458984375], [141.70074462890625], [8.845449447631836], [6.624897480010986], [4.410506725311279], [38.37006759643555], [68.55548095703125], [122.89159393310547], [5.968291282653809], [4.936514377593994], [2.609605073928833], [21.314773559570312], [45.228126525878906], [81.4139633178711], [3.980790376663208], [4.433416366577148], [1.8335528373718262], [0.19110994040966034], [0.0765497237443924], [5.316965579986572], [27.2789306640625], [60.31145477294922], [27.82839012145996], [107.17118835449219]]])
 
-model_mode = "ConvTimeNet" #"TCN" or "ConvTimeNet"
+model_mode = "TCN" #"TCN" or "ConvTimeNet"
 
 
 # ========== 滑动窗口配置 ==========
@@ -62,7 +62,7 @@ input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  #
 				"hip_angle_*", "hip_angle_*_velocity_filt",#21
 				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
 
-sensor_pick = [12,13,14,15,16,17,23,24,]
+sensor_pick = [6,7,8,9,10,11,12,13,14,15,16,17,23,24,]
 
 action_patterns = [
 	# === 按论文中重要性排序的动作筛选 ===

@@ -42,11 +42,13 @@ class ModelLoader:
         tcn_params = {k: v for k, v in model_info.items()
                       if k in tcn_param_names}
 
+        # Ensure center and scale are on the correct device (for both load_weights=True and False)
+
+
         # Modify parameters based on configuration when not loading weights
         if not load_weights:
             tcn_params = ModelLoader._adjust_model_params(tcn_params, config)
 
-        # Ensure center and scale are on the correct device (for both load_weights=True and False)
         if 'center' in tcn_params and tcn_params['center'] is not None:
             if torch.is_tensor(tcn_params['center']):
                 tcn_params['center'] = tcn_params['center'].to(device)
