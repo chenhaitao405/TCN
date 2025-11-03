@@ -1,21 +1,76 @@
 import os
+import numpy as np
 
-task_name = "actuator_hiponly_p1p2"  #sensor_trainData_valData
 # relative file path to trained model
-model_path = os.path.join("models", "p1+p2_finalmodel.tar")
+task_name = "hiponly"  #sensor_trainData_valData
 
-# relative path to data
+# ========== 模型加载 ==========
+model_path = os.path.join("models", "trained_tcn.tar")
+
+# 原始 center 形状: (1, 25, 1)
+center = np.array([[[-1.3138794898986816], [1.0175517797470093], [1.0200027227401733], [-3.7354042530059814], [10.356223106384277], [-1.115983247756958], [-2.3052029609680176], [-1.2783820629119873], [4.49326753616333], [-2.2510268688201904], [9.043442726135254], [1.0297681093215942], [0.7113392353057861], [-0.42998769879341125], [0.7253568172454834], [2.6528778076171875], [8.714276313781738], [-0.28184762597084045], [-0.021478787064552307], [0.03748692199587822], [6.203179836273193], [-27.908424377441406], [-0.10620186477899551], [-30.666257858276367], [-0.13483266532421112]]])
+# 原始 scale 形状: (1, 25, 1)
+scale = np.array([[[64.02909851074219], [71.5345458984375], [141.70074462890625], [8.845449447631836], [6.624897480010986], [4.410506725311279], [38.37006759643555], [68.55548095703125], [122.89159393310547], [5.968291282653809], [4.936514377593994], [2.609605073928833], [21.314773559570312], [45.228126525878906], [81.4139633178711], [3.980790376663208], [4.433416366577148], [1.8335528373718262], [0.19110994040966034], [0.0765497237443924], [5.316965579986572], [27.2789306640625], [60.31145477294922], [27.82839012145996], [107.17118835449219]]])
+
+model_mode = "TCN" #"TCN" or "ConvTimeNet"
+
+
+# ========== 滑动窗口配置 ==========
+# Sliding Window Configuration for Training
+use_sliding_window = True  # Set to True to use sliding window for training, False to use original mode
+window_size = 280  # Size of each window (number of time steps)
+window_stride = 20  # Stride for sliding window (how many steps to slide)
+min_trial_length = 280  # Minimum trial length required (should be >= window_size)
+
+# ========== 数据集划分配置 ==========
+# split_mode: "manual" 使用手动划分（按目录）, "random" 使用随机划分
+split_mode = "manual"  # or "random"
+
+# 手动划分时使用的训练和测试数据目录
+train_data_dirs = [
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    # 可以添加更多训练目录
+]
+
+val_dataset = [
+    "/home/num2/datasets/EXO/Phase3_Parsed/val",
+    # 可以添加更多测试目录
+]
+
+# 随机划分时使用的数据目录（保留向后兼容）
 data_dirs = [
     "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-     # "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
 ]
+
+# 验证集比例（仅在random模式下使用）
+val_split = 0.1
+
+
+# corresponding leg (model is not dependent on side)
+side = ["r","l"]
+
+
+# corresponding model input names in dataset (* is substituted with side)
+input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  # 0- 2
+				"foot_imu_*_accel_x", "foot_imu_*_accel_y", "foot_imu_*_accel_z",#3-5
+				"shank_imu_*_gyro_x", "shank_imu_*_gyro_y", "shank_imu_*_gyro_z",# 6
+				"shank_imu_*_accel_x", "shank_imu_*_accel_y", "shank_imu_*_accel_z",#9
+				"thigh_imu_*_gyro_x", "thigh_imu_*_gyro_y", "thigh_imu_*_gyro_z",#12
+				"thigh_imu_*_accel_x", "thigh_imu_*_accel_y", "thigh_imu_*_accel_z",#15
+				"insole_*_cop_x", "insole_*_cop_z", "insole_*_force_y",#18
+				"hip_angle_*", "hip_angle_*_velocity_filt",#21
+				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
+
+sensor_pick = [21,22]
 
 action_patterns = [
 	# === 按论文中重要性排序的动作筛选 ===
-	r"^normal_walk_.*",  # 1. Level ground walk - 最重要
+	# r"^normal_walk_.*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差）
+	r"^normal_walk_.*_(shuffle|0-6|1-2|1-8|2-0|2-5|skip).*",  # 1. Level ground walk - 最重要（_shuffle、_0-6，两个慢速效果较差,排除）
 	r"^poses_.*",  # 2. Standing poses
 	# r"^dynamic_walk_.*(high-knees|butt-kicks).*",  # 3. Calisthenics (high-knees, butt-kicks)
-	r"^push_.*",  # 4. Push and pull recovery
+	# r"^push_.*",  # 4. Push and pull recovery
 	r"^jump_.*_(hop|vertical).*",  # 5. Jump in place
 	r"^turn_and_step_.*",  # 6. Turn
 	r"^cutting_.*",  # 7. Cut
@@ -42,28 +97,13 @@ action_patterns = [
 	# r"^step_ups_.*",  # 28. Step up
 ]
 
-# corresponding leg (model is not dependent on side)
-side = ["r","l"]
 
-# corresponding model input names in dataset (* is substituted with side)
-input_names = ["foot_imu_*_gyro_x", "foot_imu_*_gyro_y", "foot_imu_*_gyro_z",  # 0- 2
-				"foot_imu_*_accel_x", "foot_imu_*_accel_y", "foot_imu_*_accel_z",#3-5
-				"shank_imu_*_gyro_x", "shank_imu_*_gyro_y", "shank_imu_*_gyro_z",# 6
-				"shank_imu_*_accel_x", "shank_imu_*_accel_y", "shank_imu_*_accel_z",#9
-				"thigh_imu_*_gyro_x", "thigh_imu_*_gyro_y", "thigh_imu_*_gyro_z",#12
-				"thigh_imu_*_accel_x", "thigh_imu_*_accel_y", "thigh_imu_*_accel_z",#15
-				"insole_*_cop_x", "insole_*_cop_z", "insole_*_force_y",#18
-				"hip_angle_*", "hip_angle_*_velocity_filt",#21
-				"knee_angle_*", "knee_angle_*_velocity_filt"]#23
-
-
-sensor_pick = [12,13,14,15,16,17,21,22,]
 
 # corresponding model label names in dataset
-label_names = ["hip_flexion_*_moment"]
+label_names = [ "hip_flexion_*_moment"]
 
 # intentional model delay (in data points)
-model_delays = [10, 0] # hip moment estimates are delayed by 50 ms
+model_delays = [10] # hip moment estimates are delayed by 50 ms
 
 # participant masses for normalizing insole forces.
 # - NOTE: This is a simplification. Detailed participant masses are provided in the readme of the corresponding dataset.

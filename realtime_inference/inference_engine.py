@@ -95,6 +95,8 @@ class InferenceEngine:
         self.history_window = self.model.get_effective_history()
         self.buffer_size = self.history_window + 500  # 额外缓冲
         self.data_buffer = deque(maxlen=self.buffer_size)
+        self.data_buffer_l = deque(maxlen=self.buffer_size)
+        self.data_buffer_r = deque(maxlen=self.buffer_size)
 
         self.enable_vel_filter = False
         if hasattr(self.config, 'vel_filter_cutoff'):
@@ -103,22 +105,21 @@ class InferenceEngine:
         # 获取输入输出配置
         self.input_names = self.config.input_names
         self.input_rate = self.config.input_rate
+        self.sides = self.config.side
         self.label_names = self.config.label_names
+
+        self.label_dir_names = []
+
+        for i, label_name in enumerate(self.config.label_names):
+            for j, side in enumerate(self.sides):
+                self.label_dir_names.append(label_name.replace("*", side))
+
         self.model_delays = self.config.model_delays if hasattr(self.config, 'model_delays') else [0] * len(
             self.label_names)
 
         self.input_frames_needed = int(self.history_window * self.input_rate / 200)
 
         # 初始化冲击衰减器
-        self.impact_attenuator = None
-        if hasattr(self.config, 'enable_impact_attenuation') and self.config.enable_impact_attenuation:
-            # 从配置文件读取参数，或使用默认值
-            attenuator_config = {
-                'frame_rate': self.input_rate
-            }
-
-            self.impact_attenuator = ImpactAttenuator(**attenuator_config)
-            print(f"冲击衰减器已启用")
 
         # 初始化力矩非线性滤波器
         self.torque_nonlinear_filter = None
@@ -210,7 +211,7 @@ class InferenceEngine:
 
         return filtered_value[0]
 
-    def process_frame(self, sensor_data: Dict[str, float]) -> Dict[str, float]:
+    def process_frame_hip(self, sensor_data: Dict[str, float]) -> Dict[str, float]:
         """
         处理单帧传感器数据
         Args:
@@ -220,11 +221,75 @@ class InferenceEngine:
         """
         start_time = time.time()
 
-        # 1. 冲击检测和衰减系数计算
-        attenuation_factor = 1.0
-        if self.impact_attenuator is not None:
-            acc_x = sensor_data.get('thigh_imu_*_accel_y', 0.0)
-            attenuation_factor, new_impact = self.impact_attenuator.process(acc_x)
+        # 推理时的修改
+        # 分别提取左右侧数据
+        frame_data_l = np.array([sensor_data['hip_angle_l'], sensor_data['hip_vel_l']])
+        frame_data_r = np.array([sensor_data['hip_angle_r'], sensor_data['hip_vel_r']])
+
+        # 分别添加到各自的buffer
+        self.data_buffer_l.append(frame_data_l)
+        self.data_buffer_r.append(frame_data_r)
+
+        # 检查是否有足够的历史数据
+        if len(self.data_buffer_l) < self.input_frames_needed or len(self.data_buffer_r) < self.input_frames_needed:
+            print("skip infer")
+            return {}
+
+        # 准备左右两侧的输入窗口
+        input_window_l = np.array(list(self.data_buffer_l))[-self.input_frames_needed:]
+        input_window_r = np.array(list(self.data_buffer_r))[-self.input_frames_needed:]
+
+        # 重采样处理
+        if self.input_rate != 200:
+            input_window_l = signal.resample(input_window_l, self.history_window, axis=0)
+            input_window_r = signal.resample(input_window_r, self.history_window, axis=0)
+        else:
+            input_window_l = np.array(list(self.data_buffer_l))[-self.history_window:]
+            input_window_r = np.array(list(self.data_buffer_r))[-self.history_window:]
+
+        # 构建输入张量 - shape: [2, 2, 248]
+        # 方式1: 使用stack
+        input_tensor_l = torch.tensor(input_window_l.T, dtype=torch.float32).unsqueeze(0)  # [1, 2, 248]
+        input_tensor_r = torch.tensor(input_window_r.T, dtype=torch.float32).unsqueeze(0)  # [1, 2, 248]
+        input_tensor = torch.cat([input_tensor_l, input_tensor_r], dim=0).to(self.device)  # [2, 2, 248]
+
+        # 推理
+        with torch.no_grad():
+            output = self.model(input_tensor)
+
+        # 提取输出 - 模型输出的最后一个时刻是对"当前-delay"时刻的预测
+        moments = {}
+        for i, label_name in enumerate(self.label_names):
+            for j, side in enumerate(self.sides):
+                # 获取最新的预测值（这是对past时刻的预测）
+                moment_value = output[j, i, -1].item()
+
+                # 应用巴特沃斯滤波器（如果启用）
+                if self.enable_vel_filter:
+                    moment_value = self.filter_velocity(moment_value)
+
+                # 应用力矩非线性滤波器（如果启用）
+                if self.torque_nonlinear_filter is not None:
+                    moment_value = self.torque_nonlinear_filter.filter(moment_value)
+
+                moments[label_name.replace("*", side)] = moment_value
+
+        # 记录推理时间
+        inference_time = (time.time() - start_time) * 1000  # 转换为毫秒
+        self.inference_times.append(inference_time)
+        self.last_inference_time = inference_time
+
+        return moments
+
+    def process_frame(self, sensor_data: Dict[str, float]) -> Dict[str, float]:
+        """
+        处理单帧传感器数据
+        Args:
+            sensor_data: 传感器数据字典 {sensor_name: value}
+        Returns:
+            关节力矩字典 {joint_name: moment_value}
+        """
+        start_time = time.time()
 
         # 将传感器数据按配置顺序排列
         frame_data = np.array([sensor_data.get(name, 0.0) for name in self.input_names])
@@ -245,7 +310,6 @@ class InferenceEngine:
             input_window = np.array(list(self.data_buffer))[-self.history_window:]
 
         input_tensor = torch.tensor(input_window.T, dtype=torch.float32).unsqueeze(0).to(self.device)
-
         # 推理
         with torch.no_grad():
             output = self.model(input_tensor)
@@ -253,20 +317,19 @@ class InferenceEngine:
         # 提取输出 - 模型输出的最后一个时刻是对"当前-delay"时刻的预测
         moments = {}
         for i, label_name in enumerate(self.label_names):
-            # 获取最新的预测值（这是对past时刻的预测）
-            moment_value = output[0, i, -1].item()
+            for j, side in enumerate(self.sides):
+                # 获取最新的预测值（这是对past时刻的预测）
+                moment_value = output[j, i, -1].item()
 
-            # 应用巴特沃斯滤波器（如果启用）
-            if self.enable_vel_filter:
-                # 应用冲击衰减
-                # moment_value *= attenuation_factor
-                moment_value = self.filter_velocity(moment_value)
+                # 应用巴特沃斯滤波器（如果启用）
+                if self.enable_vel_filter:
+                    moment_value = self.filter_velocity(moment_value)
 
-            # 应用力矩非线性滤波器（如果启用）
-            if self.torque_nonlinear_filter is not None:
-                moment_value = self.torque_nonlinear_filter.filter(moment_value)
+                # 应用力矩非线性滤波器（如果启用）
+                if self.torque_nonlinear_filter is not None:
+                    moment_value = self.torque_nonlinear_filter.filter(moment_value)
 
-            moments[label_name] = moment_value
+                moments[label_name.replace("*", side)] = moment_value
 
         # 记录推理时间
         inference_time = (time.time() - start_time) * 1000  # 转换为毫秒
