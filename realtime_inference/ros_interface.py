@@ -11,15 +11,16 @@ import argparse
 from collections import deque
 import threading
 
+import numpy as np
 # ROS imports
 import rospy
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray, Float32MultiArray
 
 # PyQt5 imports
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 import pyqtgraph as pg
-
+from utils.config_utils import ConfigManager
 
 import warnings
 
@@ -36,11 +37,12 @@ class PublishWorker(QThread):
     status_update = pyqtSignal(float)  # 发布频率
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, topic: str = '/moment'):
+    def __init__(self, topic: str = '/moment', label_hip:bool = False):
         super().__init__()
         self.topic = topic
         self.is_running = False
         self.publisher = None
+        self.label_hip = label_hip
 
         # 共享数据和线程锁
         self.moments_lock = threading.Lock()
@@ -78,9 +80,8 @@ class PublishWorker(QThread):
         """设置关节数量"""
         with self.moments_lock:
             self.num_joints = num
-
-    def run(self):
-        """线程主循环 - 100Hz固定频率发布"""
+#TODO: 髋关节的发布要修改
+    def run_knee(self):
         self.is_running = True
 
         # 创建发布器
@@ -102,7 +103,7 @@ class PublishWorker(QThread):
                     if self.current_moments:
                         # 发送值 = 推理值 × 体重 × 0.2
                         moment_values = [value * self.body_weight * 0.2
-                                    for value in self.current_moments.values()]
+                                         for value in self.current_moments.values()]
 
                         # 将力矩值和时间戳打包在一起发送
                         # 格式：[moment1, moment2, ..., momentN, timestamp_sensor, timestamp_publish]
@@ -112,6 +113,65 @@ class PublishWorker(QThread):
                     else:
                         # 没有数据时发送零值 + 时间戳
                         msg.data = [0.0] * max(self.num_joints, 1) + [0.0]
+
+                # 发布消息
+                if self.publisher:
+                    self.publisher.publish(msg)
+                    self.publish_count += 1
+
+                # 更新发布频率统计
+                current_time = time.time()
+                if current_time - self.last_stats_time >= 1.0:
+                    publish_rate = self.publish_count / (current_time - self.last_stats_time)
+                    self.status_update.emit(publish_rate)
+                    self.publish_count = 0
+                    self.last_stats_time = current_time
+
+                rate.sleep()
+
+            except Exception as e:
+                self.error_occurred.emit(f"发布错误: {str(e)}")
+
+
+    def run(self):
+
+        if self.label_hip:
+            self.run_hip()
+        else:
+            self.run_knee()
+
+
+
+    def run_hip(self):
+        """线程主循环 - 100Hz固定频率发布"""
+        self.is_running = True
+
+        # 创建发布器
+        self.publisher = rospy.Publisher(
+            self.topic,
+            Float32MultiArray,
+            queue_size=10
+        )
+
+        # 100Hz -> 10ms周期
+        rate = rospy.Rate(100)  # 使用设置的频率
+
+        while self.is_running and not rospy.is_shutdown():
+
+            try:
+                msg = Float32MultiArray()
+
+                with self.moments_lock:
+                    if self.current_moments:
+                        # 发送值 = 推理值 × 体重 × 0.2
+                        moment_values = [value * self.body_weight * 0.2
+                                    for value in self.current_moments.values()]
+
+                        msg.data = moment_values
+
+                    else:
+                        # 没有数据时发送零值 + 时间戳
+                        msg.data = [0.0] * max(self.num_joints, 1)
 
                 # 发布消息
                 if self.publisher:
@@ -142,7 +202,8 @@ class PublishWorker(QThread):
 class InferenceWorker(QThread):
     """推理工作线程"""
     # 修改信号定义，添加 timestamp_sensor 和 timestamp_back 参数
-    data_ready = pyqtSignal(dict, dict, float, float, float, float)  # sensor_data, moments, timestamp, return_moment, timestamp_sensor, timestamp_back
+    data_ready = pyqtSignal(dict, float, dict, float, float)
+    # sensor_data, moments, timestamp, return_moment, timestamp_sensor, timestamp_back
     status_update = pyqtSignal(dict)  # performance stats
     error_occurred = pyqtSignal(str)  # error message
 
@@ -171,6 +232,76 @@ class InferenceWorker(QThread):
         self.is_running = True
 
         # 注意：时间基准（start_timestamp）会在第一次接收到数据时自动设置
+
+        def sensor_callback_hip(msg):
+            """处理传感器数据回调"""
+            if self.is_paused or not self.is_running:
+                return
+
+            try:
+                # 解析传感器数据
+                if len(msg.data) < 1:
+                    self.error_occurred.emit(f"数据不足: {len(msg.data)} 值 (需要至少1个)")
+                    return
+                ## 将角度转弧度
+                # 直接转换前4个弧度值转为角度
+                radians = np.degrees(np.array(msg.data[:4])) * -1
+                # 构建字典
+                raw_data = {
+                    'hip_angle_l': radians[0],
+                    'hip_angle_r': radians[1],
+                    'hip_vel_l': radians[2],
+                    'hip_vel_r': radians[3],
+                }
+
+                processed_data = self.preprocessor.process_hip(raw_data)
+                return_moment = {
+                    'hip_flexion_l_moment': msg.data[-2]/100,
+                    'hip_flexion_r_moment': msg.data[-1]/100,
+                }
+                # 执行推理 - 添加计时
+                inference_start = time.time()
+                moments = self.engine.process_frame_hip(processed_data)
+
+                inference_end = time.time()
+                inference_time = (inference_end - inference_start) * 1000  # 转换为毫秒
+
+                # 打印耗时统计
+                # print(f"预处理耗时: {preprocess_time:.3f} ms")
+                # print(f"推理耗时: {inference_time:.3f} ms")
+                # print(f"总耗时: {(preprocess_time + inference_time):.3f} ms")
+                # print("-" * 40)  # 分隔线，便于查看
+
+                # 获取时间戳（使用相对时间）
+                current_timestamp = rospy.Time.now().to_sec()
+
+                # 如果是第一次，记录起始时间
+                if self.start_timestamp is None:
+                    self.start_timestamp = current_timestamp
+
+                # 计算相对时间（从开始推理到现在的秒数）
+                relative_time = current_timestamp - self.start_timestamp
+
+                # 发送数据信号，使用相对时间（含对ros发布线程更新力矩）
+                self.data_ready.emit(
+                    moments,
+                    relative_time,return_moment,0.0,0.0
+                )
+
+                # 更新统计
+                self.frame_count += 1
+                current_time = time.time()
+                if current_time - self.last_time >= 1.0:
+                    self.receive_rate = self.frame_count / (current_time - self.last_time)
+                    stats = self.engine.get_performance_stats()
+                    stats['receive_rate'] = self.receive_rate
+                    stats['frame_count'] = self.frame_count
+                    self.status_update.emit(stats)
+                    self.frame_count = 0
+                    self.last_time = current_time
+
+            except Exception as e:
+                self.error_occurred.emit(str(e))
 
         def sensor_callback(msg):
             """处理传感器数据回调"""
@@ -201,7 +332,6 @@ class InferenceWorker(QThread):
                 # 保存返回值
                 timestamp_sensor = raw_data['timestamp_sensor']
                 timestamp_back = raw_data['timestamp_back']
-                return_moment = raw_data['moment']
 
                 # 预处理数据 - 添加计时
                 preprocess_start = time.time()
@@ -232,12 +362,14 @@ class InferenceWorker(QThread):
                 # 计算相对时间（从开始推理到现在的秒数）
                 relative_time = current_timestamp - self.start_timestamp
 
+                first_key = list(moments.keys())[0]
+                return_moments = {first_key: raw_data['moment']}
+
                 # 发送数据信号，使用相对时间（含对ros发布线程更新力矩）
                 self.data_ready.emit(
-                    processed_data,
                     moments,
                     relative_time,
-                    return_moment,
+                    return_moments,
                     timestamp_sensor,  # 传感器时间戳
                     timestamp_back     # 返回时间戳
                 )
@@ -258,12 +390,20 @@ class InferenceWorker(QThread):
                 self.error_occurred.emit(str(e))
 
         # 订阅传感器数据
-        self.subscriber = rospy.Subscriber(
-            '/motor12_left',
-            Float64MultiArray,
-            sensor_callback,
-            queue_size=10
-        )
+        if any("hip" in label_name for label_name in self.engine.label_names):
+            self.subscriber = rospy.Subscriber(
+                '/wgg_msg',
+                Float32MultiArray,
+                sensor_callback_hip,
+                queue_size=10
+            )
+        else:
+            self.subscriber = rospy.Subscriber(
+                '/motor12_left',
+                Float64MultiArray,
+                sensor_callback,
+                queue_size=10
+            )
 
         # 保持线程运行
         while self.is_running and not rospy.is_shutdown():
@@ -295,7 +435,15 @@ class ROSInferenceUI(QMainWindow):
     def __init__(self, config_path: str, side: str = 'r'):
         super().__init__()
         self.config_path = config_path
+
+        # 复用现有的配置加载器
+        self.config_manager = ConfigManager()
+        self.config = self.config_manager.load_config(config_path)
         self.side = side
+        self.label_hip = False
+        if any("hip" in label_name for label_name in self.config.label_names):
+            self.label_hip = True
+
 
         # 初始化ROS节点
         rospy.init_node('exo_inference_ui', anonymous=True)
@@ -312,6 +460,7 @@ class ROSInferenceUI(QMainWindow):
         # 工作线程
         self.inference_worker = None
         self.publish_worker = None
+
 
         # 数据缓存
         self.plot_buffer_size = 1000
@@ -723,13 +872,18 @@ class ROSInferenceUI(QMainWindow):
         if self.inference_worker is None:
             self.inference_worker = InferenceWorker(self.config_path, self.side)
             # 连接信号时参数数量要匹配
-            self.inference_worker.data_ready.connect(self.on_data_received)
+            #TODO: 修改髋关节数据发送回调
+            if any("hip" in label_name for label_name in self.inference_worker.engine.label_names):
+                self.inference_worker.data_ready.connect(self.on_data_received_hip)
+            else:
+                self.inference_worker.data_ready.connect(self.on_data_received)
+
             self.inference_worker.status_update.connect(self.on_status_update)
             self.inference_worker.error_occurred.connect(self.on_error)
 
         # 初始化关节列表
         if not self.joint_combo.count():
-            for name in self.inference_worker.engine.label_names:
+            for name in self.inference_worker.engine.label_dir_names:
                 self.joint_combo.addItem(name)
                 self.moment_buffers[name] = deque(maxlen=self.plot_buffer_size)
                 self.return_moment_buffers[name] = deque(maxlen=self.plot_buffer_size)  # 初始化返回值缓存
@@ -818,7 +972,7 @@ class ROSInferenceUI(QMainWindow):
         """开始发布力矩"""
         # 创建发布线程
         if self.publish_worker is None:
-            self.publish_worker = PublishWorker(self.pub_topic)
+            self.publish_worker = PublishWorker(self.pub_topic,self.label_hip)
             self.publish_worker.status_update.connect(self.on_publish_rate_update)
             self.publish_worker.error_occurred.connect(self.on_error)
 
@@ -827,8 +981,8 @@ class ROSInferenceUI(QMainWindow):
                 self.publish_worker.set_num_joints(self.joint_combo.count())
 
             # 如果有当前数据，立即更新
-            if self.current_moments:
-                self.publish_worker.update_moments_with_timestamp(self.current_moments, self.body_weight)
+            # if self.current_moments:
+            #     self.publish_worker.update_moments_with_timestamp(self.current_moments, self.body_weight)
 
         self.publish_worker.start()
         self.is_publishing = True
@@ -862,8 +1016,63 @@ class ROSInferenceUI(QMainWindow):
         self.current_joint = joint_name
         self._plot_dirty = True
 
-    def on_data_received(self, sensor_data: dict, moments: dict, relative_time: float,
-                         return_moment: float, timestamp_sensor: float, timestamp_back: float):
+#TODO: 髋部数据回调重写
+    def on_data_received_hip(self, moments: dict,relative_time: float,
+                         return_moment: dict, timestamp_sensor: float, timestamp_back: float):
+        """接收到推理数据 - 包含时间戳
+        timestamp_sensor 当前传感器对应的时间戳
+        timestamp_back: 当前力矩对应推理时刻的时间戳
+        （时延 = timestamp_sensor-timestamp_back）
+        """
+        # 计算时延（转换为毫秒）
+        # 只有当 timestamp_back 不为0时才开始统计（刚启动时没有返回值）
+        # 更新时间缓存（relative_time已经是相对时间，单位：秒）
+        self.time_buffer.append(relative_time)
+
+        # 更新力矩缓存和返回值缓存
+        for joint_name, value in moments.items():
+            if joint_name in self.moment_buffers:
+                self.moment_buffers[joint_name].append(value)
+                # 为每个关节保存相同的返回值
+                self.return_moment_buffers[joint_name].append(return_moment[joint_name])
+
+        # 保存当前力矩值和返回值
+        self.current_moments = moments
+        self.current_return_moment = return_moment
+
+        if self.publish_worker and self.is_publishing:
+            self.publish_worker.update_moments_with_timestamp(
+                moments,
+                self.body_weight,
+                relative_time  # 传递传感器时间戳
+            )
+
+        if timestamp_sensor > 0 and timestamp_back > 0:
+            # 如果是第一次收到返回值，记录日志
+            if not self.first_return_received:
+                self.first_return_received = True
+                self.add_log("INFO", "开始接收返回值，时延统计已启动")
+
+            self.current_latency = (timestamp_sensor - timestamp_back) * 10  # 转换为毫秒
+
+            # 更新统计数据
+            self.latency_sum += self.current_latency
+            self.latency_count += 1
+            self.avg_latency = self.latency_sum / self.latency_count
+
+            # 更新最大最小值
+            self.max_latency = max(self.max_latency, self.current_latency)
+            self.min_latency = min(self.min_latency, self.current_latency)
+
+        # 更新运行时间显示
+        if self.runtime_label:
+            self.runtime_label.setText(f"运行时间: {relative_time:.1f} s")
+
+        # 更新界面
+        self._plot_dirty = True
+
+    def on_data_received(self,  moments: dict, relative_time: float,
+                         return_moment: dict, timestamp_sensor: float, timestamp_back: float):
         """接收到推理数据 - 包含时间戳
         timestamp_sensor 当前传感器对应的时间戳
         timestamp_back: 当前力矩对应推理时刻的时间戳
@@ -989,7 +1198,7 @@ class ROSInferenceUI(QMainWindow):
             self.current_value_label.setText(f"发送值: {send_value:.3f} Nm")
 
             # 显示返回值
-            self.return_value_label.setText(f"返回值: {self.current_return_moment:.3f} Nm")
+            self.return_value_label.setText(f"返回值: {self.current_return_moment[self.current_joint]:.3f} Nm")
 
             # 更新峰值（发送值的峰值）
             if self.current_joint in self.moment_buffers:
