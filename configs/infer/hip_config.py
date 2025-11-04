@@ -48,7 +48,7 @@ val_split = 0.1
 
 
 # corresponding leg (model is not dependent on side)
-side = ["r","l"]
+side = ["l","r"]
 
 
 # corresponding model input names in dataset (* is substituted with side)
@@ -141,7 +141,7 @@ input_rate = 100
 
 
 # 力矩非线性滤波器配置
-enable_torque_nonlinear_filter= True  # 是否启用力矩非线性滤波
+enable_torque_nonlinear_filter= False  # 是否启用力矩非线性滤波
 
 # 滤波器参数（可选，不设置则使用默认值）
 torque_filter_power_pos= 2.0     # 正向幂次 (默认: 1.5)

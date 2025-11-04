@@ -14,6 +14,65 @@ import time
 from scipy import signal
 
 
+class ButterworthFilter:
+    """巴特沃斯低通滤波器类"""
+
+    def __init__(self, cutoff_freq: float, sampling_rate: float, order: int = 2):
+        """
+        初始化巴特沃斯低通滤波器
+        Args:
+            cutoff_freq: 截止频率 (Hz)
+            sampling_rate: 采样率 (Hz)
+            order: 滤波器阶数，默认为2
+        """
+        self.cutoff_freq = cutoff_freq
+        self.sampling_rate = sampling_rate
+        self.order = order
+
+        # 计算归一化截止频率
+        nyquist = sampling_rate / 2
+        self.normalized_cutoff = cutoff_freq / nyquist
+
+        # 设计巴特沃斯滤波器
+        self.b, self.a = signal.butter(self.order, self.normalized_cutoff, btype='low', analog=False)
+
+        # 初始化滤波器状态
+        self.zi = signal.lfilter_zi(self.b, self.a)
+        self.filter_state = None
+
+    def reset(self):
+        """重置滤波器状态"""
+        self.filter_state = None
+
+    def filter(self, value: float) -> float:
+        """
+        对单个值进行滤波
+        Args:
+            value: 原始值
+        Returns:
+            滤波后的值
+        """
+        # 如果滤波器状态未初始化，使用当前值初始化
+        if self.filter_state is None:
+            self.filter_state = self.zi * value
+
+        # 应用滤波
+        filtered_value, self.filter_state = signal.lfilter(
+            self.b, self.a, [value], zi=self.filter_state
+        )
+
+        return filtered_value[0]
+
+    def get_params(self) -> Dict[str, float]:
+        """获取滤波器参数"""
+        return {
+            'cutoff_freq': self.cutoff_freq,
+            'sampling_rate': self.sampling_rate,
+            'normalized_cutoff': self.normalized_cutoff,
+            'order': self.order
+        }
+
+
 class TorqueNonlinearFilter:
     """力矩系数非线性滤波器"""
 
@@ -153,63 +212,33 @@ class InferenceEngine:
         print(f"  - History window: {self.history_window}")
         print(f"  - Model delays: {self.model_delays}")
 
-        # 初始化巴特沃斯滤波器（用于motorVel）
+        # 初始化巴特沃斯滤波器（为每条腿创建独立的滤波器）
+        self.butterworth_filters = {}
         if hasattr(self.config, 'vel_filter_cutoff'):
-            self.init_butterworth_filter(self.config.vel_filter_cutoff, self.config.vel_filter_sampling_rate)
-            print(f"已启用力矩滤波器 (截止频率: {self.config.vel_filter_cutoff} Hz)")
+            # 获取滤波器参数
+            cutoff_freq = self.config.vel_filter_cutoff
+            sampling_rate = self.config.vel_filter_sampling_rate
+            filter_order = getattr(self.config, 'vel_filter_order', 2)  # 默认2阶
 
-    def init_butterworth_filter(self, cutoff_freq: float, sampling_rate: float):
-        """
-        初始化巴特沃斯低通滤波器
-        Args:
-            cutoff_freq: 截止频率 (Hz)
-            sampling_rate: 采样率 (Hz)
-        """
-        # 计算归一化截止频率
-        nyquist = sampling_rate / 2
-        normalized_cutoff = cutoff_freq / nyquist
+            # 为每个输出标签和每侧腿创建独立的滤波器
+            for label_name in self.label_names:
+                for side in self.sides:
+                    filter_key = label_name.replace("*", side)
+                    self.butterworth_filters[filter_key] = ButterworthFilter(
+                        cutoff_freq, sampling_rate, filter_order
+                    )
 
-        # 设计2阶巴特沃斯滤波器
-        self.filter_order = 2
-        self.b, self.a = signal.butter(self.filter_order, normalized_cutoff, btype='low', analog=False)
+            print(f"已启用巴特沃斯滤波器:")
+            print(f"  - 截止频率: {cutoff_freq} Hz")
+            print(f"  - 采样率: {sampling_rate} Hz")
+            print(f"  - 滤波器阶数: {filter_order}")
+            print(f"  - 创建了 {len(self.butterworth_filters)} 个独立滤波器")
 
-        # 初始化滤波器状态
-        self.zi = signal.lfilter_zi(self.b, self.a)
-        self.filter_state = None
-
-        # 打印滤波器参数（调试用）
-        print(f"巴特沃斯滤波器参数:")
-        print(f"  - 截止频率: {cutoff_freq} Hz")
-        print(f"  - 采样率: {sampling_rate} Hz")
-        print(f"  - 归一化截止频率: {normalized_cutoff:.4f}")
-        print(f"  - 滤波器阶数: {self.filter_order}")
-
-    def reset_filter(self):
-        """重置滤波器状态"""
-        if self.enable_vel_filter:
-            self.filter_state = None
-
-    def filter_velocity(self, velocity: float) -> float:
-        """
-        对速度值进行滤波
-        Args:
-            velocity: 原始速度值
-        Returns:
-            滤波后的速度值
-        """
-        if not self.enable_vel_filter:
-            return velocity
-
-        # 如果滤波器状态未初始化，使用当前值初始化
-        if self.filter_state is None:
-            self.filter_state = self.zi * velocity
-
-        # 应用滤波
-        filtered_value, self.filter_state = signal.lfilter(
-            self.b, self.a, [velocity], zi=self.filter_state
-        )
-
-        return filtered_value[0]
+    def reset_filters(self):
+        """重置所有滤波器状态"""
+        for filter_instance in self.butterworth_filters.values():
+            filter_instance.reset()
+        print(f"已重置 {len(self.butterworth_filters)} 个滤波器")
 
     def process_frame_hip(self, sensor_data: Dict[str, float]) -> Dict[str, float]:
         """
@@ -256,23 +285,24 @@ class InferenceEngine:
         # 推理
         with torch.no_grad():
             output = self.model(input_tensor)
-
+        #先左后右
         # 提取输出 - 模型输出的最后一个时刻是对"当前-delay"时刻的预测
         moments = {}
         for i, label_name in enumerate(self.label_names):
             for j, side in enumerate(self.sides):
                 # 获取最新的预测值（这是对past时刻的预测）
                 moment_value = output[j, i, -1].item()
-
-                # 应用巴特沃斯滤波器（如果启用）
-                if self.enable_vel_filter:
-                    moment_value = self.filter_velocity(moment_value)
+                # 构建当前输出的键
+                output_key = label_name.replace("*", side)
+                # 应用巴特沃斯滤波器（如果启用，使用对应腿的滤波器）
+                if self.enable_vel_filter and output_key in self.butterworth_filters:
+                    moment_value = self.butterworth_filters[output_key].filter(moment_value)
 
                 # 应用力矩非线性滤波器（如果启用）
                 if self.torque_nonlinear_filter is not None:
                     moment_value = self.torque_nonlinear_filter.filter(moment_value)
 
-                moments[label_name.replace("*", side)] = moment_value
+                moments[output_key] = moment_value
 
         # 记录推理时间
         inference_time = (time.time() - start_time) * 1000  # 转换为毫秒
@@ -320,16 +350,16 @@ class InferenceEngine:
             for j, side in enumerate(self.sides):
                 # 获取最新的预测值（这是对past时刻的预测）
                 moment_value = output[j, i, -1].item()
-
-                # 应用巴特沃斯滤波器（如果启用）
-                if self.enable_vel_filter:
-                    moment_value = self.filter_velocity(moment_value)
-
+                # 构建当前输出的键
+                output_key = label_name.replace("*", side)
+                # 应用巴特沃斯滤波器（如果启用，使用对应腿的滤波器）
+                if self.enable_vel_filter and output_key in self.butterworth_filters:
+                    moment_value = self.butterworth_filters[output_key].filter(moment_value)
                 # 应用力矩非线性滤波器（如果启用）
                 if self.torque_nonlinear_filter is not None:
                     moment_value = self.torque_nonlinear_filter.filter(moment_value)
 
-                moments[label_name.replace("*", side)] = moment_value
+                moments[output_key] = moment_value
 
         # 记录推理时间
         inference_time = (time.time() - start_time) * 1000  # 转换为毫秒
@@ -341,24 +371,38 @@ class InferenceEngine:
     def get_performance_stats(self) -> Dict[str, float]:
         """获取性能统计信息"""
         if len(self.inference_times) > 0:
-            return {
+            stats = {
                 'avg_inference_time': np.mean(self.inference_times),
                 'max_inference_time': np.max(self.inference_times),
                 'min_inference_time': np.min(self.inference_times),
                 'last_inference_time': self.last_inference_time,
                 'buffer_size': len(self.data_buffer)
             }
+
+            # 添加滤波器信息
+            if self.butterworth_filters:
+                stats['num_butterworth_filters'] = len(self.butterworth_filters)
+
+            return stats
         else:
             return {
                 'avg_inference_time': 0,
                 'max_inference_time': 0,
                 'min_inference_time': 0,
                 'last_inference_time': 0,
-                'buffer_size': 0
+                'buffer_size': 0,
+                'num_butterworth_filters': len(self.butterworth_filters)
             }
 
     def reset_buffer(self):
         """重置数据缓冲区"""
         self.data_buffer.clear()
+        self.data_buffer_l.clear()
+        self.data_buffer_r.clear()
         self.inference_times.clear()
-        print("Buffer reset")
+
+        # 重置所有滤波器
+        if self.butterworth_filters:
+            self.reset_filters()
+
+        print("Buffer and filters reset")

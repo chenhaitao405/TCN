@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 从CSV文件读取电机数据并发布到ROS话题
-CSV格式: timestamp, motor_angle_L_float, motor_angle_R_float, motor_vel_L_float, motor_vel_R_float
+CSV格式: timestamp, hip_angle_l, hip_angle_r, hip_angle_l_velocity, hip_angle_r_velocity
 发布格式: [hip_angle_l, hip_angle_r, hip_angle_l_velocity, hip_angle_r_velocity, torque_L, torque_R]
 """
 
@@ -33,12 +33,11 @@ class MotorDataPublisher:
         # CSV列名定义
         self.column_names = [
             'timestamp',
-            'motor_angle_L_float',
-            'motor_angle_R_float',
-            'motor_vel_L_float',
-            'motor_vel_R_float'
+            'hip_angle_l',
+            'hip_angle_r',
+            'hip_angle_l_velocity',
+            'hip_angle_r_velocity'
         ]
-
         # 数据相关
         self.data = None
         self.current_index = 0
@@ -60,8 +59,8 @@ class MotorDataPublisher:
             self.data = pd.read_csv(self.csv_path)
 
             # 检查是否包含所需的列
-            required_cols = ['motor_angle_L_float', 'motor_angle_R_float',
-                             'motor_vel_L_float', 'motor_vel_R_float']
+            required_cols = ['hip_angle_l', 'hip_angle_r',
+                             'hip_angle_l_velocity', 'hip_angle_r_velocity']
 
             if not all(col in self.data.columns for col in required_cols):
                 rospy.logerr(f"CSV file missing required columns. Expected: {required_cols}")
@@ -110,10 +109,10 @@ class MotorDataPublisher:
         # 接收端格式: sensor_data[:4] = [hip_angle_l, hip_angle_r, hip_angle_l_velocity, hip_angle_r_velocity]
         #            torque[-2:] = [torque_L, torque_R]
         frame_data = [
-            float(row['motor_angle_L_float']),  # [0] hip_angle_l
-            float(row['motor_angle_R_float']),  # [1] hip_angle_r
-            float(row['motor_vel_L_float']),  # [2] hip_angle_l_velocity
-            float(row['motor_vel_R_float']),  # [3] hip_angle_r_velocity
+            float(row['hip_angle_l']),  # [0] hip_angle_l
+            float(row['hip_angle_r']),  # [1] hip_angle_r
+            float(row['hip_angle_l_velocity']),  # [2] hip_angle_l_velocity
+            float(row['hip_angle_r_velocity']),  # [3] hip_angle_r_velocity
             float(self.torque_L),  # [4] torque_L
             float(self.torque_R)  # [5] torque_R
         ]
@@ -180,16 +179,16 @@ class MotorDataPublisher:
             print(f"Total rows: {len(self.data)}")
             print(f"Columns: {list(self.data.columns)}")
             print("\nData statistics:")
-            print(self.data[['motor_angle_L_float', 'motor_angle_R_float',
-                             'motor_vel_L_float', 'motor_vel_R_float']].describe())
+            print(self.data[['hip_angle_l', 'hip_angle_r',
+                             'hip_angle_l_velocity', 'hip_angle_r_velocity']].describe())
             print("\nFirst 5 rows:")
             print(self.data.head())
             print("\n=== Publishing Format ===")
             print("Data array structure (6 elements):")
-            print("  [0]: hip_angle_l (motor_angle_L_float)")
-            print("  [1]: hip_angle_r (motor_angle_R_float)")
-            print("  [2]: hip_angle_l_velocity (motor_vel_L_float)")
-            print("  [3]: hip_angle_r_velocity (motor_vel_R_float)")
+            print("  [0]: hip_angle_l (hip_angle_l)")
+            print("  [1]: hip_angle_r (hip_angle_r)")
+            print("  [2]: hip_angle_l_velocity (hip_angle_l_velocity)")
+            print("  [3]: hip_angle_r_velocity (hip_angle_r_velocity)")
             print(f"  [4]: torque_L (fixed value: {self.torque_L})")
             print(f"  [5]: torque_R (fixed value: {self.torque_R})")
             print("\nReceiver code extracts:")

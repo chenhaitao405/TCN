@@ -50,3 +50,30 @@
         
         # 创建订阅器 - 接收传感器数据
         rospy.Subscriber('/wgg_msg', Float32MultiArray, self.sensor_callback)
+### 运行时数据流
+```
+1. ROS订阅器接收传感器数据
+   ↓
+2. 触发 sensor_callback_hip() 回调
+   ↓
+3. 数据预处理：
+   - 弧度转角度
+   - 映射到标准格式
+   ↓
+4. 调用 engine.process_frame_hip()
+   - 分别缓存左右侧数据
+   - 构建双侧输入张量
+   - 执行模型推理
+   ↓
+5. 后处理：
+   - 应用巴特沃斯滤波（如启用）
+   - 应用非线性滤波（如启用）
+   ↓
+6. PublishWorker.run_hip() 发布：
+   - 使用 Float32MultiArray
+   - 发布频率 100Hz
+   - 不包含时间戳
+```
+
+
+

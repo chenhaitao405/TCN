@@ -351,3 +351,17 @@ class DataPreprocessor:
                 processed_data[official_key] = value
 
         return processed_data
+
+
+    def process_hip(self, custom_data: Dict[str, float]) -> Dict[str, float]:
+        """
+        处理自定义格式数据，转换为官方格式
+        Args:
+            custom_data: 自定义格式的数据字典
+        Returns:
+            官方格式的数据字典
+        """
+        custom_data['hip_vel_l'] = self.filter_velocity(custom_data['hip_vel_l'])
+        custom_data['hip_vel_r'] = self.filter_velocity(custom_data['hip_vel_r'])
+
+        return custom_data
