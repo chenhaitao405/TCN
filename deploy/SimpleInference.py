@@ -222,7 +222,7 @@ def main():
     主函数
     """
     # 配置路径（根据实际情况修改）
-    model_path = "checkpoints/train_baseline_manual_windows_thigh_p1p2_20251017_162149/best_model.tar"
+    model_path = "./deploy/model_knee_manual_windows.tar"
     csv_path = "./deploy/kneeData_left.csv"  # 需要准备测试数据CSV文件
 
     # 检查文件是否存在
