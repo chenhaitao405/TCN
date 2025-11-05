@@ -4,6 +4,7 @@
 import pandas as pd
 from typing import Optional, Dict
 from scipy import signal
+from utils.Butterworth_filter import ButterworthFilter  # 导入独立的巴特沃斯滤波器
 
 class CustomDataLoader:
     """从CSV文件加载自定义格式的数据"""
@@ -173,61 +174,46 @@ class DataPreprocessor:
 
         # 初始化巴特沃斯滤波器（用于motorVel）
         if self.enable_vel_filter:
-            self.init_butterworth_filter(vel_filter_cutoff, sampling_rate)
+            # 使用独立的ButterworthFilter类
+            self.vel_filter = ButterworthFilter(
+                cutoff_freq=vel_filter_cutoff,
+                sampling_rate=sampling_rate,
+                order=2
+            )
             print(f"已启用motorVel滤波器 (截止频率: {vel_filter_cutoff} Hz)")
 
-    def init_butterworth_filter(self, cutoff_freq: float, sampling_rate: float):
-        """
-        初始化巴特沃斯低通滤波器
-        Args:
-            cutoff_freq: 截止频率 (Hz)
-            sampling_rate: 采样率 (Hz)
-        """
-        # 计算归一化截止频率
-        nyquist = sampling_rate / 2
-        normalized_cutoff = cutoff_freq / nyquist
-
-        # 设计2阶巴特沃斯滤波器
-        self.filter_order = 2
-        self.b, self.a = signal.butter(self.filter_order, normalized_cutoff, btype='low', analog=False)
-
-        # 初始化滤波器状态
-        self.zi = signal.lfilter_zi(self.b, self.a)
-        self.filter_state = None
-
-        # 打印滤波器参数（调试用）
-        print(f"巴特沃斯滤波器参数:")
-        print(f"  - 截止频率: {cutoff_freq} Hz")
-        print(f"  - 采样率: {sampling_rate} Hz")
-        print(f"  - 归一化截止频率: {normalized_cutoff:.4f}")
-        print(f"  - 滤波器阶数: {self.filter_order}")
+            # 为process_hip方法创建左右腿的独立滤波器
+            self.hip_filter_l = ButterworthFilter(
+                cutoff_freq=vel_filter_cutoff,
+                sampling_rate=sampling_rate,
+                order=2
+            )
+            self.hip_filter_r = ButterworthFilter(
+                cutoff_freq=vel_filter_cutoff,
+                sampling_rate=sampling_rate,
+                order=2
+            )
+            print(f"已创建左右髋关节独立滤波器")
 
     def reset_filter(self):
-            """重置滤波器状态"""
-            if self.enable_vel_filter:
-                self.filter_state = None
+        """重置滤波器状态"""
+        if self.enable_vel_filter:
+            self.vel_filter.reset()
+            self.hip_filter_l.reset()
+            self.hip_filter_r.reset()
 
     def filter_velocity(self, velocity: float) -> float:
-            """
-            对速度值进行滤波
-            Args:
-                velocity: 原始速度值
-            Returns:
-                滤波后的速度值
-            """
-            if not self.enable_vel_filter:
-                return velocity
+        """
+        对速度值进行滤波
+        Args:
+            velocity: 原始速度值
+        Returns:
+            滤波后的速度值
+        """
+        if not self.enable_vel_filter:
+            return velocity
 
-            # 如果滤波器状态未初始化，使用当前值初始化
-            if self.filter_state is None:
-                self.filter_state = self.zi * velocity
-
-            # 应用滤波
-            filtered_value, self.filter_state = signal.lfilter(
-                self.b, self.a, [velocity], zi=self.filter_state
-            )
-
-            return filtered_value[0]
+        return self.vel_filter.filter(velocity)
 
     def create_mapping(self):
         """创建自定义数据到官方格式的映射"""
@@ -355,13 +341,24 @@ class DataPreprocessor:
 
     def process_hip(self, custom_data: Dict[str, float]) -> Dict[str, float]:
         """
-        处理自定义格式数据，转换为官方格式
+        处理髋关节数据，为左右腿分别应用独立的滤波器
         Args:
-            custom_data: 自定义格式的数据字典
+            custom_data: 包含髋关节数据的字典
         Returns:
-            官方格式的数据字典
+            滤波后的数据字典
         """
-        custom_data['hip_vel_l'] = self.filter_velocity(custom_data['hip_vel_l'])
-        custom_data['hip_vel_r'] = self.filter_velocity(custom_data['hip_vel_r'])
+        if not self.enable_vel_filter:
+            return custom_data
 
-        return custom_data
+        # 创建数据副本以避免修改原数据
+        processed_data = custom_data.copy()
+
+        # 对左腿髋关节速度进行滤波
+        if 'hip_vel_l' in processed_data:
+            processed_data['hip_vel_l'] = self.hip_filter_l.filter(custom_data['hip_vel_l'])
+
+        # 对右腿髋关节速度进行滤波
+        if 'hip_vel_r' in processed_data:
+            processed_data['hip_vel_r'] = self.hip_filter_r.filter(custom_data['hip_vel_r'])
+
+        return processed_data

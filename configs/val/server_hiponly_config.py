@@ -2,7 +2,7 @@ import os
 
 task_name = "10action_hiponly_p1p2"  #sensor_trainData_valData
 # relative file path to trained model
-model_path = os.path.join("checkpoints", "train_10action_hiponly_p1p2_20250820_155143/best_model.tar")
+model_path = "checkpoints/train_hiponly_20251030_151745/best_model.tar"
 
 # relative path to data
 data_dirs = [

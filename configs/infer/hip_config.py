@@ -28,7 +28,7 @@ split_mode = "manual"  # or "random"
 
 # 手动划分时使用的训练和测试数据目录
 train_data_dirs = [
-    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
+    "/home/num2/datasets/EXO/Phase1And2_Parsed/val",
     # 可以添加更多训练目录
 ]
 
@@ -39,8 +39,7 @@ val_dataset = [
 
 # 随机划分时使用的数据目录（保留向后兼容）
 data_dirs = [
-    "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-    "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+    "/home/num2/datasets/EXO/Phase3_Parsed/val"
 ]
 
 # 验证集比例（仅在random模式下使用）
@@ -48,7 +47,7 @@ val_split = 0.1
 
 
 # corresponding leg (model is not dependent on side)
-side = ["l","r"]
+side = ["l", "r"]
 
 
 # corresponding model input names in dataset (* is substituted with side)
@@ -137,7 +136,7 @@ participant_masses = {
 vel_filter_cutoff = 5.0
 sampling_rate = 200.0
 vel_filter_sampling_rate = 200.0
-input_rate = 100
+input_rate = 100	#若使用数据集数据进行验证，需要改为200
 
 
 # 力矩非线性滤波器配置

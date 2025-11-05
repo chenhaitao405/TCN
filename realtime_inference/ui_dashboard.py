@@ -71,8 +71,8 @@ class InferenceWorker(QThread):
                 # 简单地合并数据
                 combined_data = moments.copy() if moments else {}
                 if ground_truth:
-                    for key, value in ground_truth.items():
-                        combined_data[f"{key}_truth"] = value
+                    for (key_gt, value_gt), (key_m, value_m) in zip(ground_truth.items(), moments.items()):
+                        combined_data[f"{key_m}_truth"] = value_gt
 
                 # 发送数据信号
                 self.data_ready.emit(sensor_data, combined_data, timestamp)
@@ -110,7 +110,7 @@ class RealtimeInferenceDashboard(QMainWindow):
         self.moment_buffers = {}
         self.moment_time_buffers = {}
 
-        for name in self.inference_engine.label_names:
+        for name in self.inference_engine.label_dir_names:
             self.moment_buffers[name] = {
                 'predicted': deque(maxlen=self.plot_buffer_size),
                 'ground_truth': deque(maxlen=self.plot_buffer_size)
@@ -122,7 +122,7 @@ class RealtimeInferenceDashboard(QMainWindow):
 
         # 当前选择的传感器和关节
         self.current_sensor = self.inference_engine.input_names[0] if self.inference_engine.input_names else None
-        self.current_joint = self.inference_engine.label_names[0] if self.inference_engine.label_names else None
+        self.current_joint = self.inference_engine.label_dir_names[0] if self.inference_engine.label_dir_names else None
 
         # 播放状态
         self.is_playing = False
@@ -237,7 +237,7 @@ class RealtimeInferenceDashboard(QMainWindow):
         layout.addWidget(input_info)
 
         # 输出维度
-        output_info = QLabel(f"输出维度: {len(self.inference_engine.label_names)}")
+        output_info = QLabel(f"输出维度: {len(self.inference_engine.label_dir_names)}")
         layout.addWidget(output_info)
 
         # 设备信息
@@ -370,8 +370,8 @@ class RealtimeInferenceDashboard(QMainWindow):
         joint_select_layout = QHBoxLayout()
         joint_select_layout.addWidget(QLabel("选择关节:"))
         self.joint_combo = QComboBox()
-        self.joint_combo.addItems(self.inference_engine.label_names)
-        if len(self.inference_engine.label_names) > 0:
+        self.joint_combo.addItems(self.inference_engine.label_dir_names)
+        if len(self.inference_engine.label_dir_names) > 0:
             self.joint_combo.setCurrentIndex(0)
         self.joint_combo.currentTextChanged.connect(self.on_joint_changed)
         joint_select_layout.addWidget(self.joint_combo)
@@ -724,7 +724,7 @@ class RealtimeInferenceDashboard(QMainWindow):
                 self.sensor_buffers[name].append(value)
 
         # 更新力矩数据缓存（考虑延迟）
-        for i, name in enumerate(self.inference_engine.label_names):
+        for i, name in enumerate(self.inference_engine.label_dir_names):
             delay = self.inference_engine.model_delays[i] if i < len(self.inference_engine.model_delays) else 0
             delay_time = delay / 200.0  # 转换为秒（假设200Hz采样率）
 
