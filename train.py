@@ -329,7 +329,7 @@ def prepare_data(config, args, device):
 
     # Create datasets based on split mode
     train_dataset, val_dataset = _create_datasets(
-        data_manager, config, split_mode,use_sliding_window,  device_cpu, max_samples
+        data_manager, config, split_mode, use_sliding_window, device_cpu, max_samples
     )
 
     # Create data loaders based on training mode

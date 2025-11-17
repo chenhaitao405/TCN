@@ -1,3 +1,7 @@
 /checkpoints
 /validation_results
+/datasets
+/cache
+__pycache__/
+distribution_plots/
 *.pyc

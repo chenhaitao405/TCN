@@ -4,7 +4,7 @@ Unified model loading utilities for training and validation.
 import torch
 import inspect
 import numpy as np
-from utils.tcn import TCN
+from utils.tcn import TCN, QuanTCN
 from utils.TSForecasting.layers.ConvTimeNet_backbone import ConvTimeNet_backbone
 from typing import Tuple, Dict, Any, Union
 
@@ -229,6 +229,47 @@ class ModelLoader:
         return model, save_info
 
     @staticmethod
+    def load_QuanTCN(model_path, device, config, load_weights):
+        if not load_weights:
+            model_info ={}
+            state_dict = None
+        else:
+            if model_path is None:
+                raise ValueError("model_path cannot be None when load_weights=True")
+            model_info = torch.load(model_path, map_location=device)
+            state_dict = model_info.get("state_dict", None)
+        model_signature = inspect.signature(QuanTCN.__init__)
+        model_param_names = [param.name for param in model_signature.parameters.values()
+                           if param.name != 'self']
+        model_params = {k: v for k, v in model_info.items() if k in model_param_names}
+        model_params = ModelLoader._adjust_model_params(model_params, config)
+        if hasattr(config, "num_channels") and isinstance(config.num_channels, (tuple, list)):
+            model_params["num_channels"] = config.num_channels
+        if hasattr(config, "ksize") and isinstance(config.ksize, int):
+            model_params["ksize"] = config.ksize
+        if hasattr(config, "dropout") and isinstance(config.dropout, (int, float)):
+            model_params["dropout"] = config.dropout
+        if hasattr(config, "eff_hist") and isinstance(config.eff_hist, int):
+            model_params["eff_hist"] = config.eff_hist
+        if hasattr(config, "spatial_dropout") and isinstance(config.spatial_dropout, bool):
+            model_params["spatial_dropout"] = config.spatial_dropout
+
+        model = QuanTCN(**model_params).to(device)
+        
+        if load_weights and state_dict is not None:
+            model.load_state_dict(state_dict)
+            print("Loaded pretrained weights successfully!")
+        elif load_weights and state_dict is None:
+            raise ValueError("No state_dict found in model file!")
+        else:
+            print("Using random initialization for model weights.")
+        ModelLoader._verify_model_weights(model)
+        save_info = model_params
+
+        return model, save_info
+        
+        
+    @staticmethod
     def load_model(
             model_path: str,
             device: torch.device,
@@ -256,6 +297,9 @@ class ModelLoader:
         elif model_mode == 'ConvTimeNet':
             print(f"Loading ConvTimeNet model...")
             return ModelLoader.load_ConvTimeNet(model_path, device, config, load_weights)
+        elif model_mode == 'QuanTCN':
+            print(f"Loading QuanTCN model...")
+            return ModelLoader.load_QuanTCN(model_path, device, config, load_weights)
         else:
             raise ValueError(f"Unknown model_mode: {model_mode}. Supported modes: 'TCN', 'ConvTimeNet'")
 
@@ -283,8 +327,6 @@ class ModelLoader:
             # 优先从 config 读取归一化参数，如果没有则从模型参数中提取并调整
             if hasattr(config, 'center') and config.center is not None:
                 # 从 config 读取 center
-                import numpy as np
-                import torch
                 center = config.center
                 if isinstance(center, np.ndarray):
                     center = torch.from_numpy(center).float()
@@ -304,8 +346,6 @@ class ModelLoader:
 
             if hasattr(config, 'scale') and config.scale is not None:
                 # 从 config 读取 scale
-                import numpy as np
-                import torch
                 scale = config.scale
                 if isinstance(scale, np.ndarray):
                     scale = torch.from_numpy(scale).float()

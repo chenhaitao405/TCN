@@ -22,8 +22,8 @@ model_mode = "TCN" #"TCN" or "ConvTimeNet"
 
 # relative path to data
 data_dirs = [
-    # "/home/num2/datasets/EXO/Phase1And2_Parsed/Parsed",
-     "/home/num2/datasets/EXO/Phase3_Parsed/Parsed"
+    # "/home/sxs/datasets/EXO/Phase1And2_Parsed/Parsed",
+     "/home/sxs/datasets/EXO/Phase3_Parsed/Parsed"
 ]
 
 # corresponding leg (model is not dependent on side)

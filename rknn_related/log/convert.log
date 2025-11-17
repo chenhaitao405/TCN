@@ -1,0 +1,112 @@
+D Save log info to: log/convert.log
+I rknn-toolkit2 version: 2.3.2
+[1;33mW[0m [1;31mconfig: Generally, when the model input is an image, the range of mean_values/std_values should be in [0, 255], but the value you filled is less than 1,
+          please check carefully! (If it is a Pytorch / Caffe model, you can try multiplying this value by 255)[0m
+[1;33mW[0m [1;33mload_onnx: If you don't need to crop the model, don't set 'inputs'/'input_size_list'/'outputs'![0m
+D base_optimize ...
+D base_optimize done.
+D 
+D fold_constant ...
+D fold_constant done.
+D 
+D correct_ops ...
+D correct_ops done.
+D 
+D fuse_ops ...
+D fuse_ops results:
+D     remove_invalid_concat: remove node = ['/Concat']
+D     swap_transpose_slice: remove node = ['/Transpose', '/Slice'], add node = ['/Slice', '/Transpose']
+D     remove_invalid_concat: remove node = ['/Concat_1']
+D     remove_invalid_slice: remove node = ['/Slice']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['sensor_inputs_rs', '/tcn/network/network.0/net/conv1/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.0/net/conv1/Conv_output_0_rs', '/tcn/network/network.0/net/chomp1/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.0/net/chomp1/Slice_output_0_rs', '/tcn/network/network.0/net/af1/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.0/net/af1/Relu_output_0_rs', '/tcn/network/network.0/net/conv2/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.0/net/conv2/Conv_output_0_rs', '/tcn/network/network.0/net/chomp2/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.0/net/chomp2/Slice_output_0_rs', '/tcn/network/network.0/net/af2/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['sensor_inputs_rs#1', '/tcn/network/network.0/downsample/Conv_output_0-rs']
+D     unsqueeze_to_4d_add: remove node = [], add node = ['/tcn/network/network.0/net/af2/Relu_output_0_rs', '/tcn/network/network.0/downsample/Conv_output_0_rs', '/tcn/network/network.0/Add_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.0/Add_output_0_rs', '/tcn/network/network.0/af/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.0/af/Relu_output_0_rs', '/tcn/network/network.1/net/conv1/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.1/net/conv1/Conv_output_0_rs', '/tcn/network/network.1/net/chomp1/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.1/net/chomp1/Slice_output_0_rs', '/tcn/network/network.1/net/af1/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.1/net/af1/Relu_output_0_rs', '/tcn/network/network.1/net/conv2/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.1/net/conv2/Conv_output_0_rs', '/tcn/network/network.1/net/chomp2/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.1/net/chomp2/Slice_output_0_rs', '/tcn/network/network.1/net/af2/Relu_output_0-rs']
+D     unsqueeze_to_4d_add: remove node = [], add node = ['/tcn/network/network.1/net/af2/Relu_output_0_rs', '/tcn/network/network.0/af/Relu_output_0_rs#1', '/tcn/network/network.1/Add_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.1/Add_output_0_rs', '/tcn/network/network.1/af/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.1/af/Relu_output_0_rs', '/tcn/network/network.2/net/conv1/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.2/net/conv1/Conv_output_0_rs', '/tcn/network/network.2/net/chomp1/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.2/net/chomp1/Slice_output_0_rs', '/tcn/network/network.2/net/af1/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.2/net/af1/Relu_output_0_rs', '/tcn/network/network.2/net/conv2/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.2/net/conv2/Conv_output_0_rs', '/tcn/network/network.2/net/chomp2/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.2/net/chomp2/Slice_output_0_rs', '/tcn/network/network.2/net/af2/Relu_output_0-rs']
+D     unsqueeze_to_4d_add: remove node = [], add node = ['/tcn/network/network.2/net/af2/Relu_output_0_rs', '/tcn/network/network.1/af/Relu_output_0_rs#1', '/tcn/network/network.2/Add_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.2/Add_output_0_rs', '/tcn/network/network.2/af/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.2/af/Relu_output_0_rs', '/tcn/network/network.3/net/conv1/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.3/net/conv1/Conv_output_0_rs', '/tcn/network/network.3/net/chomp1/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.3/net/chomp1/Slice_output_0_rs', '/tcn/network/network.3/net/af1/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.3/net/af1/Relu_output_0_rs', '/tcn/network/network.3/net/conv2/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.3/net/conv2/Conv_output_0_rs', '/tcn/network/network.3/net/chomp2/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.3/net/chomp2/Slice_output_0_rs', '/tcn/network/network.3/net/af2/Relu_output_0-rs']
+D     unsqueeze_to_4d_add: remove node = [], add node = ['/tcn/network/network.3/net/af2/Relu_output_0_rs', '/tcn/network/network.2/af/Relu_output_0_rs#1', '/tcn/network/network.3/Add_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.3/Add_output_0_rs', '/tcn/network/network.3/af/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.3/af/Relu_output_0_rs', '/tcn/network/network.4/net/conv1/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.4/net/conv1/Conv_output_0_rs', '/tcn/network/network.4/net/chomp1/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.4/net/chomp1/Slice_output_0_rs', '/tcn/network/network.4/net/af1/Relu_output_0-rs']
+D     unsqueeze_to_4d_conv: remove node = [], add node = ['/tcn/network/network.4/net/af1/Relu_output_0_rs', '/tcn/network/network.4/net/conv2/Conv_output_0-rs']
+D     unsqueeze_to_4d_slice: remove node = [], add node = ['/tcn/network/network.4/net/conv2/Conv_output_0_rs', '/tcn/network/network.4/net/chomp2/Slice_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.4/net/chomp2/Slice_output_0_rs', '/tcn/network/network.4/net/af2/Relu_output_0-rs']
+D     unsqueeze_to_4d_add: remove node = [], add node = ['/tcn/network/network.4/net/af2/Relu_output_0_rs', '/tcn/network/network.3/af/Relu_output_0_rs#1', '/tcn/network/network.4/Add_output_0-rs']
+D     unsqueeze_to_4d_relu: remove node = [], add node = ['/tcn/network/network.4/Add_output_0_rs', '/tcn/network/network.4/af/Relu_output_0-rs']
+D     convert_gather_to_reshape: remove node = ['/Gather'], add node = ['/Gather_2rs']
+D     convert_gemm_by_exmatmul: remove node = ['/linear/Gemm'], add node = ['/Gather_output_0_rs', '/linear/Gemm#1', '/linear/Gemm_output_0_mm_tp', '/linear/Gemm_output_0_mm_tp_rs']
+D     unsqueeze_to_4d_transpose: remove node = [], add node = ['/linear/Gemm_output_0_rs', '/Slice_output_0-rs']
+D     convert_unsqueeze_to_reshape: remove node = ['/Unsqueeze'], add node = ['/Unsqueeze_2rs']
+D     remove_parallel_reshape: remove node = ['sensor_inputs_rs', 'sensor_inputs_rs#1'], add node = ['sensor_inputs_rs']
+D     bypass_two_reshape: remove node = ['/tcn/network/network.0/downsample/Conv_output_0_rs', '/tcn/network/network.0/downsample/Conv_output_0-rs', '/tcn/network/network.0/Add_output_0_rs', '/tcn/network/network.0/Add_output_0-rs', '/tcn/network/network.0/af/Relu_output_0_rs#1', '/tcn/network/network.0/af/Relu_output_0_rs', '/tcn/network/network.0/af/Relu_output_0-rs', '/tcn/network/network.1/net/conv1/Conv_output_0_rs', '/tcn/network/network.1/net/conv1/Conv_output_0-rs', '/tcn/network/network.1/net/chomp1/Slice_output_0_rs', '/tcn/network/network.1/net/chomp1/Slice_output_0-rs', '/tcn/network/network.1/net/af1/Relu_output_0_rs', '/tcn/network/network.1/net/af1/Relu_output_0-rs', '/tcn/network/network.1/net/conv2/Conv_output_0_rs', '/tcn/network/network.1/net/conv2/Conv_output_0-rs', '/tcn/network/network.1/net/chomp2/Slice_output_0_rs', '/tcn/network/network.1/net/chomp2/Slice_output_0-rs', '/tcn/network/network.1/net/af2/Relu_output_0_rs', '/tcn/network/network.1/net/af2/Relu_output_0-rs', '/tcn/network/network.1/Add_output_0_rs', '/tcn/network/network.1/Add_output_0-rs', '/tcn/network/network.1/af/Relu_output_0_rs#1', '/tcn/network/network.1/af/Relu_output_0_rs', '/tcn/network/network.1/af/Relu_output_0-rs', '/tcn/network/network.2/net/conv1/Conv_output_0_rs', '/tcn/network/network.2/net/conv1/Conv_output_0-rs', '/tcn/network/network.2/net/chomp1/Slice_output_0_rs', '/tcn/network/network.2/net/chomp1/Slice_output_0-rs', '/tcn/network/network.2/net/af1/Relu_output_0_rs', '/tcn/network/network.2/net/af1/Relu_output_0-rs', '/tcn/network/network.2/net/conv2/Conv_output_0_rs', '/tcn/network/network.2/net/conv2/Conv_output_0-rs', '/tcn/network/network.2/net/chomp2/Slice_output_0_rs', '/tcn/network/network.2/net/chomp2/Slice_output_0-rs', '/tcn/network/network.2/net/af2/Relu_output_0_rs', '/tcn/network/network.2/net/af2/Relu_output_0-rs', '/tcn/network/network.2/Add_output_0_rs', '/tcn/network/network.2/Add_output_0-rs', '/tcn/network/network.2/af/Relu_output_0_rs#1', '/tcn/network/network.2/af/Relu_output_0_rs', '/tcn/network/network.2/af/Relu_output_0-rs', '/tcn/network/network.3/net/conv1/Conv_output_0_rs', '/tcn/network/network.3/net/conv1/Conv_output_0-rs', '/tcn/network/network.3/net/chomp1/Slice_output_0_rs', '/tcn/network/network.3/net/chomp1/Slice_output_0-rs', '/tcn/network/network.3/net/af1/Relu_output_0_rs', '/tcn/network/network.3/net/af1/Relu_output_0-rs', '/tcn/network/network.3/net/conv2/Conv_output_0_rs', '/tcn/network/network.3/net/conv2/Conv_output_0-rs', '/tcn/network/network.3/net/chomp2/Slice_output_0_rs', '/tcn/network/network.3/net/chomp2/Slice_output_0-rs', '/tcn/network/network.3/net/af2/Relu_output_0_rs', '/tcn/network/network.3/net/af2/Relu_output_0-rs', '/tcn/network/network.3/Add_output_0_rs', '/tcn/network/network.3/Add_output_0-rs', '/tcn/network/network.3/af/Relu_output_0_rs#1', '/tcn/network/network.3/af/Relu_output_0_rs', '/tcn/network/network.3/af/Relu_output_0-rs', '/tcn/network/network.4/net/conv1/Conv_output_0_rs', '/tcn/network/network.4/net/conv1/Conv_output_0-rs', '/tcn/network/network.4/net/chomp1/Slice_output_0_rs', '/tcn/network/network.4/net/chomp1/Slice_output_0-rs', '/tcn/network/network.4/net/af1/Relu_output_0_rs', '/tcn/network/network.4/net/af1/Relu_output_0-rs', '/tcn/network/network.4/net/conv2/Conv_output_0_rs', '/tcn/network/network.4/net/conv2/Conv_output_0-rs', '/tcn/network/network.4/net/chomp2/Slice_output_0_rs', '/tcn/network/network.4/net/chomp2/Slice_output_0-rs', '/tcn/network/network.4/net/af2/Relu_output_0_rs', '/tcn/network/network.4/net/af2/Relu_output_0-rs', '/tcn/network/network.4/Add_output_0_rs', '/tcn/network/network.4/Add_output_0-rs']
+D     fuse_two_reshape: remove node = ['/tcn/network/network.4/af/Relu_output_0-rs']
+D     fuse_transpose_reshape: remove node = ['/linear/Gemm_output_0_mm_tp']
+D     fuse_reshape_transpose: remove node = ['/Transpose']
+D     fuse_two_reshape: remove node = ['/Slice_output_0-rs']
+D     bypass_two_reshape: remove node = ['/tcn/network/network.0/net/conv1/Conv_output_0_rs', '/tcn/network/network.0/net/conv1/Conv_output_0-rs', '/tcn/network/network.0/net/chomp1/Slice_output_0_rs', '/tcn/network/network.0/net/chomp1/Slice_output_0-rs', '/tcn/network/network.0/net/af1/Relu_output_0_rs', '/tcn/network/network.0/net/af1/Relu_output_0-rs', '/tcn/network/network.0/net/conv2/Conv_output_0_rs', '/tcn/network/network.0/net/conv2/Conv_output_0-rs', '/tcn/network/network.0/net/chomp2/Slice_output_0_rs', '/tcn/network/network.0/net/chomp2/Slice_output_0-rs', '/tcn/network/network.0/net/af2/Relu_output_0_rs', '/tcn/network/network.0/net/af2/Relu_output_0-rs']
+D     fuse_slice_into_conv: remove node = ['/tcn/network/network.1/net/chomp1/Slice', '/tcn/network/network.1/net/chomp2/Slice', '/tcn/network/network.2/net/chomp1/Slice', '/tcn/network/network.2/net/chomp2/Slice', '/tcn/network/network.3/net/chomp1/Slice', '/tcn/network/network.3/net/chomp2/Slice', '/tcn/network/network.4/net/chomp1/Slice', '/tcn/network/network.4/net/chomp2/Slice']
+D     bypass_two_reshape: remove node = ['/Gather_output_0_rs', '/Gather_2rs']
+D     fuse_two_reshape: remove node = ['/linear/Gemm_output_0_mm_tp_rs']
+D     fuse_slice_into_conv: remove node = ['/tcn/network/network.0/net/chomp1/Slice', '/tcn/network/network.0/net/chomp2/Slice']
+D     fuse_two_reshape: remove node = ['/linear/Gemm_output_0_rs']
+D     convert_conv_to_pad_conv: remove node = [], add node = ['/tcn/network/network.1/af/Relu_output_0-rs_pad']
+D     convert_conv_to_pad_conv: remove node = [], add node = ['/tcn/network/network.2/net/af1/Relu_output_0-rs_pad']
+D     convert_conv_to_pad_conv: remove node = [], add node = ['/tcn/network/network.2/af/Relu_output_0-rs_pad']
+D     convert_conv_to_pad_conv: remove node = [], add node = ['/tcn/network/network.3/net/af1/Relu_output_0-rs_pad']
+D     convert_conv_to_pad_conv: remove node = [], add node = ['/tcn/network/network.3/af/Relu_output_0-rs_pad']
+D     convert_conv_to_pad_conv: remove node = [], add node = ['/tcn/network/network.4/net/af1/Relu_output_0-rs_pad']
+D     convert_exmatmul_to_conv: remove node = ['/linear/Gemm#1'], add node = ['/linear/Gemm#2']
+D     fold_constant ...
+D     fold_constant done.
+D fuse_ops done.
+D 
+D sparse_weight ...
+D sparse_weight done.
+D 
+D 
+D quant_optimizer ...
+D quant_optimizer results:
+D     adjust_relu: ['/tcn/network/network.4/net/af2/Relu', '/tcn/network/network.4/net/af1/Relu', '/tcn/network/network.3/net/af2/Relu', '/tcn/network/network.3/net/af1/Relu', '/tcn/network/network.2/net/af2/Relu', '/tcn/network/network.2/net/af1/Relu', '/tcn/network/network.1/net/af2/Relu', '/tcn/network/network.1/net/af1/Relu', '/tcn/network/network.0/af/Relu', '/tcn/network/network.0/net/af2/Relu', '/tcn/network/network.0/net/af1/Relu']
+D quant_optimizer done.
+D 
+[1;33mW[0m [1;33mbuild: The default input dtype of 'sensor_inputs' is changed from 'float32' to 'int8' in rknn model for performance!
+                       Please take care of this change when deploy rknn model with Runtime API![0m
+[1;33mW[0m [1;33mbuild: The default output dtype of 'torque' is changed from 'float32' to 'int8' in rknn model for performance!
+                      Please take care of this change when deploy rknn model with Runtime API![0m
+I rknn building ...
+I rknn building done.
+D adb path: /usr/bin/adb
+I target set by user is: rv1106
+D adb path: /usr/bin/adb
+I Get hardware info: target_platform = rv1106, os = Linux, aarch = aarch32
+I Check RV1106 board npu runtime version
+I Starting ntp or adb, target is RV1106
+I Start adb...
+I Connect to Device success!
+[1;33mW[0m [1;33minference: The 'data_format' is not set, and its default value is 'nhwc'![0m

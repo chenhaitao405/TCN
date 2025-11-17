@@ -111,8 +111,8 @@ class TCN(nn.Module):
 		self.eff_hist = eff_hist
 
 		# save for input feature normalization
-		self.center = center
-		self.scale = scale
+		self.register_buffer("center", center)
+		self.register_buffer("scale", scale)
 		
 	def init_weights(self):
 		self.linear.weight.data.normal_(0, 0.01)
@@ -137,3 +137,31 @@ class TCN(nn.Module):
 
 	def get_effective_history(self):
 		return self.eff_hist
+
+
+class QuanTCN(TCN):
+    
+    def __init__(self, input_size, output_size, num_channels, ksize, dropout, eff_hist, 
+                 spatial_dropout = False, activation = 'ReLU', norm = 'weight_norm'):
+        
+        norm_means = torch.tensor([0.476752, 0.495703, 0.492770, 0.430457, 0.581848, 0.579756, 0.618145, 0.492519]).reshape(1,-1,1)
+        norm_stds = torch.tensor([0.234370, 0.237314, 0.299588, 0.317835, 0.239470, 0.259621, 0.324524, 0.275043]).reshape(1,-1,1)
+        super().__init__(input_size, output_size, num_channels, ksize, dropout, eff_hist,
+                         spatial_dropout, activation, norm, center=norm_means, scale=norm_stds)
+        self.quan_max = 2 ** 8 -1
+        self.quan_min = 0
+        scales = torch.tensor([0.2152, 0.3451, 0.7216, 0.0459, 0.0549, 0.0193, 0.3545, 0.9591],
+                              dtype=torch.float32)
+        self.register_buffer("scales", scales)
+        zeros = torch.tensor([117., 128., 128.,  44.,   0., 158., 251., 123.], dtype=torch.float32)
+        self.register_buffer("zeros", zeros)
+        
+    def quantize_input(self, x):
+        x = x / self.scales.view(1,-1,1) + self.zeros.view(1,-1,1)
+        x = torch.clamp(torch.round(x), self.quan_min, self.quan_max)
+        return x
+    
+    def forward(self, x):
+        x = self.quantize_input(x)
+
+        return super().forward(x)
