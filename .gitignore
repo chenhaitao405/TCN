@@ -4,4 +4,6 @@
 /cache
 __pycache__/
 distribution_plots/
+dataset/
 *.pyc
+.vscode/
