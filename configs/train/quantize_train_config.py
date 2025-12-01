@@ -6,7 +6,7 @@ task_name = "thighIMU"  #sensor_trainData_valData
 
 # ========== 模型加载 ==========
 
-model_path = None
+model_path = os.path.join("models", "trained_quantcn_8_sensors.tar")
 model_mode = "QuanTCN"
 
 

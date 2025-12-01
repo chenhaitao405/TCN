@@ -1,6 +1,5 @@
 import argparse
 import torch
-import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
 import os
@@ -229,7 +228,7 @@ def prepare_data(config, args, device):
 
         print("=" * 50)
 
-    def _create_datasets(data_manager, config, split_mode, use_sliding_window, device, max_samples):
+    def _create_datasets(data_manager: DataManager, config, split_mode, use_sliding_window, device, max_samples):
         """
         Create train and validation datasets based on split mode.
 

@@ -1,22 +1,22 @@
 from rknn.api import RKNN
 import numpy as np
 
-DATASET_PATH = "./deploy/kneedata_left.txt"
-MODEL_PATH = "./deploy/model_knee_manual_windows.onnx"
-OUT_RKNN_PATH = "./deploy/model_knee_manual_windows.rknn"
+DATASET_PATH = "./deploy/quantize_dataset.txt"
+MODEL_PATH = "./deploy/trained_quantcn_8_sensors.onnx"
+OUT_RKNN_PATH = "./deploy/trained_quantcn_8_sensors.rknn"
 TEST_ON_DEVICE = True
 
 if __name__ == "__main__":
     rknn = RKNN(verbose=True, verbose_file="log/convert.log")
-    rknn.config(mean_values=[0.7113392353057861, -0.42998769879341125, 0.7253568172454834, 2.6528778076171875, 8.714276313781738, -0.28184762597084045, -30.666257858276367, -0.13483266532421112],
-                std_values=[21.314773559570312, 45.228126525878906, 81.4139633178711, 3.980790376663208, 4.433416366577148, 1.8335528373718262, 27.82839012145996, 107.17118835449219],
+    rknn.config(mean_values=[[i*255 for i in [0.476752, 0.495703, 0.492770, 0.430457, 0.581848, 0.579756, 0.618145, 0.492519]]],
+                std_values=[[i*255 for i in [0.234370, 0.237314, 0.299588, 0.317835, 0.239470, 0.259621, 0.324524, 0.275043]]],
                 quantized_dtype="w8a8",
-                quantized_algorithm="kl_divergence",
+                quantized_algorithm="normal",
                 quantized_method="channel",
                 target_platform="rv1106"
                 )
     
-    ret = rknn.load_onnx(model=MODEL_PATH, inputs=["sensor_inputs"], input_size_list=[[1,8,248]])
+    ret = rknn.load_onnx(model=MODEL_PATH, inputs=["sensor_inputs"], input_size_list=[[1,8,280]], outputs=["torque"])
     if ret != 0:
         print('Load model failed!')
         exit(ret)
@@ -39,17 +39,25 @@ if __name__ == "__main__":
     if TEST_ON_DEVICE:
         ret = rknn.init_runtime(target="rv1106")
     else:
-        ret = rknn.init_runtime()
+        ret = rknn.init_runtime(target=None)
     
     if ret != 0:
         print('Init runtime environment failed!')
         exit(ret)
     print('done')
     
-    data_input = np.load("./deploy/dataset/247.npy").astype(np.float32)
+    data_input = np.load("deploy/datasets/normal_walk_2-5_1.npy").astype(np.float32)
+    data_input = data_input / np.array([0.2152, 0.3451, 0.7216, 0.0459, 0.0549, 0.0193, 0.3545, 0.9591]).reshape(1,-1,1) +\
+        np.array([117., 128., 128.,  44.,   0., 158., 251., 123.]).reshape(1,-1,1)
+    data_input = np.clip(np.round(data_input), 0, 255).astype(np.uint8)
+    
+    # data_input = data_input / 255.0
+    # data_input -= np.array([0.476752, 0.495703, 0.492770, 0.430457, 0.581848, 0.579756, 0.618145, 0.492519]).reshape(1,-1,1)
+    # data_input /= np.array([0.234370, 0.237314, 0.299588, 0.317835, 0.239470, 0.259621, 0.324524, 0.275043]).reshape(1,-1,1)
+    
+    # rknn.accuracy_analysis(inputs=[data_input], target=None)
     # if TEST_ON_DEVICE:
-    data_input = np.round((data_input / 4.595620) + 1).astype(np.uint8)
-    outputs = rknn.inference(inputs=[data_input])
+    outputs = rknn.inference(inputs=[data_input], data_format="nchw")
     # if not TEST_ON_DEVICE:
     #     outputs = (outputs[0] - 69) * 0.172141
     print(outputs)

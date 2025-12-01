@@ -1,0 +1,51 @@
+# simulator_error: calculate the output error of each layer of the simulator (compared to the 'golden' value).
+#              entire: output error of each layer between 'golden' and 'simulator', these errors will accumulate layer by layer.
+#              single: single-layer output error between 'golden' and 'simulator', can better reflect the single-layer accuracy of the simulator.
+
+layer_name                                                              simulator_error                    
+                                                                    entire              single             
+                                                                 cos      euc        cos      euc          
+-------------------------------------------------------------------------------------------------------
+[Input] sensor_inputs                                          1.00000 | 0.0       1.00000 | 0.0           
+[exDataConvert] sensor_inputs_int8                             0.99983 | 41.013    0.99983 | 41.013        
+[Reshape] sensor_inputs_rs                                     0.99983 | 41.013    0.99983 | 41.013        
+[Conv] /tcn/network/network.0/net/chomp1/Slice_output_0-rs     
+[Relu] /tcn/network/network.0/net/af1/Relu_output_0-rs         0.99969 | 93.104    0.99969 | 93.104        
+[Conv] /tcn/network/network.0/net/chomp2/Slice_output_0-rs     
+[Relu] /tcn/network/network.0/net/af2/Relu_output_0-rs         0.99961 | 19.950    0.99987 | 11.377        
+[Conv] /tcn/network/network.0/downsample/Conv_output_0-rs      0.99983 | 43.751    0.99983 | 43.751        
+[Add] /tcn/network/network.0/Add_output_0-rs                   
+[Relu] /tcn/network/network.0/af/Relu_output_0-rs              0.99973 | 45.061    0.99992 | 24.548        
+[Conv] /tcn/network/network.1/net/chomp1/Slice_output_0-rs     
+[Relu] /tcn/network/network.1/net/af1/Relu_output_0-rs         0.99977 | 31.775    0.99994 | 15.673        
+[Conv] /tcn/network/network.1/net/chomp2/Slice_output_0-rs     
+[Relu] /tcn/network/network.1/net/af2/Relu_output_0-rs         0.99944 | 17.282    0.99990 | 6.9769        
+[Add] /tcn/network/network.1/Add_output_0-rs                   
+[Relu] /tcn/network/network.1/af/Relu_output_0-rs              0.99966 | 54.233    0.99986 | 34.651        
+[Pad] /tcn/network/network.1/af/Relu_output_0-rs_pad           0.99966 | 54.233    0.99992 | 26.332        
+[Conv] /tcn/network/network.2/net/chomp1/Slice_output_0-rs     
+[Relu] /tcn/network/network.2/net/af1/Relu_output_0-rs         0.99953 | 32.707    0.99990 | 15.401        
+[Pad] /tcn/network/network.2/net/af1/Relu_output_0-rs_pad      0.99953 | 32.707    0.99996 | 9.8237        
+[Conv] /tcn/network/network.2/net/chomp2/Slice_output_0-rs     
+[Relu] /tcn/network/network.2/net/af2/Relu_output_0-rs         0.99906 | 20.499    0.99982 | 8.9827        
+[Add] /tcn/network/network.2/Add_output_0-rs                   
+[Relu] /tcn/network/network.2/af/Relu_output_0-rs              0.99955 | 66.660    0.99981 | 43.583        
+[Pad] /tcn/network/network.2/af/Relu_output_0-rs_pad           0.99955 | 66.660    0.99988 | 33.841        
+[Conv] /tcn/network/network.3/net/chomp1/Slice_output_0-rs     
+[Relu] /tcn/network/network.3/net/af1/Relu_output_0-rs         0.99935 | 25.369    0.99983 | 13.075        
+[Pad] /tcn/network/network.3/net/af1/Relu_output_0-rs_pad      0.99935 | 25.369    0.99996 | 6.5675        
+[Conv] /tcn/network/network.3/net/chomp2/Slice_output_0-rs     
+[Relu] /tcn/network/network.3/net/af2/Relu_output_0-rs         0.99922 | 19.528    0.99979 | 10.101        
+[Add] /tcn/network/network.3/Add_output_0-rs                   
+[Relu] /tcn/network/network.3/af/Relu_output_0-rs              0.99940 | 82.547    0.99978 | 49.415        
+[Pad] /tcn/network/network.3/af/Relu_output_0-rs_pad           0.99940 | 82.547    0.99988 | 36.948        
+[Conv] /tcn/network/network.4/net/chomp1/Slice_output_0-rs     
+[Relu] /tcn/network/network.4/net/af1/Relu_output_0-rs         0.99924 | 26.097    0.99980 | 13.645        
+[Pad] /tcn/network/network.4/net/af1/Relu_output_0-rs_pad      0.99924 | 26.097    0.99994 | 7.2636        
+[Conv] /tcn/network/network.4/net/chomp2/Slice_output_0-rs     
+[Relu] /tcn/network/network.4/net/af2/Relu_output_0-rs         0.99910 | 17.011    0.99975 | 9.0171        
+[Add] /tcn/network/network.4/Add_output_0-rs                   
+[Relu] /tcn/network/network.4/af/Relu_output_0-rs              0.99939 | 86.014    0.99986 | 41.661        
+[Conv] /linear/Gemm_output_0_mm                                0.99937 | 7.0068    0.99984 | 3.4892        
+[Reshape] torque_int8                                          0.99937 | 7.0068    0.99993 | 2.2864        
+[exDataConvert] torque                                         0.99937 | 7.0068    0.99993 | 2.2864        

@@ -144,8 +144,10 @@ class QuanTCN(TCN):
     def __init__(self, input_size, output_size, num_channels, ksize, dropout, eff_hist, 
                  spatial_dropout = False, activation = 'ReLU', norm = 'weight_norm'):
         
-        norm_means = torch.tensor([0.476752, 0.495703, 0.492770, 0.430457, 0.581848, 0.579756, 0.618145, 0.492519]).reshape(1,-1,1)
-        norm_stds = torch.tensor([0.234370, 0.237314, 0.299588, 0.317835, 0.239470, 0.259621, 0.324524, 0.275043]).reshape(1,-1,1)
+        # norm_means = torch.tensor([0.476752, 0.495703, 0.492770, 0.430457, 0.581848, 0.579756, 0.618145, 0.492519]).reshape(1,-1,1)
+        # norm_stds = torch.tensor([0.234370, 0.237314, 0.299588, 0.317835, 0.239470, 0.259621, 0.324524, 0.275043]).reshape(1,-1,1)
+        norm_means = torch.tensor([0., 0., 0., 0., 0., 0., 0., 0.]).reshape(1,-1,1)
+        norm_stds = torch.tensor([1., 1., 1., 1., 1., 1., 1., 1.]).reshape(1,-1,1)
         super().__init__(input_size, output_size, num_channels, ksize, dropout, eff_hist,
                          spatial_dropout, activation, norm, center=norm_means, scale=norm_stds)
         self.quan_max = 2 ** 8 -1
@@ -159,7 +161,7 @@ class QuanTCN(TCN):
     def quantize_input(self, x):
         x = x / self.scales.view(1,-1,1) + self.zeros.view(1,-1,1)
         x = torch.clamp(torch.round(x), self.quan_min, self.quan_max)
-        return x
+        return x / 255.0
     
     def forward(self, x):
         x = self.quantize_input(x)

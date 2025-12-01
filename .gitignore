@@ -7,3 +7,4 @@ distribution_plots/
 dataset/
 *.pyc
 .vscode/
+log/

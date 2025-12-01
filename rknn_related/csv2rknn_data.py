@@ -6,7 +6,7 @@ from collections import deque
 
 def main():
     csv_path = "./deploy/kneeData_left.csv"
-    save_path = "./deploy/dataset"
+    save_path = "./deploy/datasets"
     txt_path = "./deploy/kneedata_left.txt"
     want_sample_num = 100
     window_size = 248
