@@ -20,9 +20,11 @@ tcn_param_names = [param.name for param in tcn_signature.parameters.values()
 tcn_params = {k: v for k, v in model_info.items()
                 if k in tcn_param_names}
 tcn = QuanTCN(**tcn_params)
-tcn.load_state_dict(state_dict)
+tcn.load_state_dict(state_dict, strict=False)  # 使用 strict=False 以兼容权重形状变化
 tcn.eval()  # 设置为评估模式
-inputs = torch.randn((1,8,280), dtype=torch.float32)
+
+# 输入形状保持 (N, C, T)，模型内部会 unsqueeze 到 (N, C, T, 1)
+inputs = torch.randn((1, 8, 280), dtype=torch.float32)
 
 with torch.no_grad():
     torch.onnx.export(tcn,

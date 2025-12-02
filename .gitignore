@@ -9,3 +9,4 @@ dataset/
 .vscode/
 log/
 snapshot/
+*.onnx
