@@ -13,9 +13,9 @@ model_mode = "QuanTCN"
 # ========== 滑动窗口配置 ==========
 # Sliding Window Configuration for Training
 use_sliding_window = True  # Set to True to use sliding window for training, False to use original mode
-window_size = 256  # Size of each window (number of time steps)
+window_size = 280  # Size of each window (number of time steps)
 window_stride = 20  # Stride for sliding window (how many steps to slide)
-min_trial_length = 256  # Minimum trial length required (should be >= window_size)
+min_trial_length = 280  # Minimum trial length required (should be >= window_size)
 
 # ========== 数据集划分配置 ==========
 # split_mode: "manual" 使用手动划分（按目录）, "random" 使用随机划分
@@ -133,5 +133,5 @@ participant_masses = {
 ksize = 5
 dropout = 0.15
 spatial_dropout = 0.15
-eff_hist = 100
-num_channels = [32, 64, 128, 64, 32]
+eff_hist = 240
+num_channels = [80, 80, 80, 80, 80]

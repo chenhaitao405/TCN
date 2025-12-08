@@ -40,7 +40,8 @@ def validate_model(model, dataloader, device, config, label_names, dataset):
 
             # Forward pass
             estimates = model(inputs)
-
+            if len(estimates.shape) == 4:
+                estimates = estimates.squeeze(-1)
             # Skip if output contains NaN
             if torch.isnan(estimates).any():
                 continue

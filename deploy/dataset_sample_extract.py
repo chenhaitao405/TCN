@@ -99,10 +99,14 @@ class DatasetSampler:  # 重命名为 Sampler 更贴切，或者保持 DatasetSu
 
     def save_sample(self, input_tensor: torch.Tensor, action_name: str, index):
         """保存单个样本到磁盘"""
-        save_data = input_tensor.numpy()
+        save_data: np.ndarray = input_tensor.numpy()
         filename = f"{action_name}_{index}.npy"
         save_path = os.path.join(self.save_dir, filename)
-        np.save(save_path, np.expand_dims(save_data, 0))
+        save_data = np.expand_dims(save_data, 0)  # (1,C,T)
+        save_data = save_data / np.array([0.2152, 0.3451, 0.7216, 0.0459, 0.0549, 0.0193, 0.3545, 0.9591]).reshape(1,-1,1) +\
+        np.array([117., 128., 128.,  44.,   0., 158., 251., 123.]).reshape(1,-1,1)
+        save_data = np.clip(np.round(save_data), 0, 255).astype(np.uint8)
+        np.save(save_path, np.expand_dims(save_data, -1))  # (1,C,T,1)
         self.txt_file.write(os.path.relpath(save_path, os.path.dirname(self.txt_path)) + '\n')
         
 
@@ -337,7 +341,6 @@ def main():
     config = config_manager.load_config(args.config_path)
     config = config_manager.apply_sensor_selection(config)
     # Prepare data
-    # 注意：这里应该只用 train_loader 还是两个都用？通常采样是在训练集做的。
     train_loader, val_loader = prepare_data(config, args, device)
     
     # 初始化采样器，保存到 'sampled_dataset' 文件夹

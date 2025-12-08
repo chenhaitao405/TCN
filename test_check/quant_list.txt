@@ -1,0 +1,4 @@
+quan_data/data_0000.npy
+quan_data/data_0001.npy
+quan_data/data_0002.npy
+quan_data/data_0003.npy

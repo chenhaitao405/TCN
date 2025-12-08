@@ -5,7 +5,7 @@ task_name = "thighIMU"  #sensor_trainData_valData
 
 # ========== 模型加载 ==========
 model_mode = "QuanTCN"
-model_path = os.path.join("models", "trained_quantcn_8_sensors.tar")
+model_path = "models/trained_quantcn_8_sensors.tar"
 
 data_dirs = [
     "/home/sxs/TCN/datasets/EXO/Phase3_Parsed/Parsed",

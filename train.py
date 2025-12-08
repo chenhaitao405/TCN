@@ -42,7 +42,7 @@ def train_epoch(
         optimizer.zero_grad()
         outputs = model(inputs)
         if len(outputs.shape) == 4:
-            outputs = outputs.squeeze(-1)
+            outputs = outputs.squeeze(-2)
         # Check for NaN in outputs
         if torch.isnan(outputs).any():
             print(f"Warning: NaN detected in model output at batch {batch_idx}")
@@ -129,7 +129,7 @@ def validate_epoch(
             # Forward pass
             outputs = model(inputs)
             if len(outputs.shape) == 4:
-                outputs = outputs.squeeze(-1)
+                outputs = outputs.squeeze(-2)
                 
             # Skip if output contains NaN
             if torch.isnan(outputs).any():
