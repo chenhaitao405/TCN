@@ -1087,8 +1087,8 @@ class ROSInferenceUI(QMainWindow):
         for joint_name, value in moments.items():
             if joint_name in self.moment_buffers:
                 self.moment_buffers[joint_name].append(value)
-                # 为每个关节保存相同的返回值
-                self.return_moment_buffers[joint_name].append(return_moment)
+                if joint_name in self.return_moment_buffers and joint_name in return_moment:
+                    self.return_moment_buffers[joint_name].append(return_moment[joint_name])
 
         # 保存当前力矩值和返回值
         self.current_moments = moments
