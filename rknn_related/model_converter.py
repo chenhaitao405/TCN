@@ -8,8 +8,8 @@ TEST_ON_DEVICE = True
 
 if __name__ == "__main__":
     rknn = RKNN(verbose=True, verbose_file="log/convert.log")
-    rknn.config(mean_values=[[0, 0, 0, 0, 0, 0, 0, 0]],
-                std_values=[[255, 255, 255, 255, 255, 255, 255, 255]],
+    rknn.config(mean_values=[[0.912629, -0.820086, 0.197228, 3.041710, 8.390683, -0.177071, -33.347044, 2.272569]],
+                std_values=[[16.687198, 29.007817, 82.961570, 4.110988, 4.230163, 1.639207, 30.426489, 113.209047]],
                 quantized_dtype="w8a8",
                 quantized_algorithm="normal",
                 quantized_method="channel",
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     #     exit(ret)
     # print('done')
     
-    # data_input = np.load("deploy/datasets/normal_walk_2-5_1.npy").astype(np.float32)
+    # data_input = np.load("deploy/datasets/normal_walk_2-5_1.npy").astype(np.uint8)
     # data_input = data_input / np.array([0.2152, 0.3451, 0.7216, 0.0459, 0.0549, 0.0193, 0.3545, 0.9591]).reshape(1,-1,1,1) +\
     #     np.array([117., 128., 128.,  44.,   0., 158., 251., 123.]).reshape(1,-1,1,1)
     # data_input = np.clip(np.round(data_input), 0, 255).astype(np.uint8)
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     # # if TEST_ON_DEVICE:
     # # model_input = np.transpose(model_input, (0,2,1,3))
     # # print(model_input.shape, model_input.dtype)
-    # outputs = rknn.inference(inputs=[model_input], data_format="nhwc", inputs_pass_through=[1])
+    # outputs = rknn.inference(inputs=[data_input], data_format="nhwc", inputs_pass_through=[1])
     # # if not TEST_ON_DEVICE:
     # #     outputs = (outputs[0] - 69) * 0.172141
     # print(outputs)

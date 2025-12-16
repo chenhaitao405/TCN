@@ -6,7 +6,7 @@ task_name = "thighIMU"  #sensor_trainData_valData
 
 # ========== 模型加载 ==========
 
-model_path = os.path.join("models", "trained_quantcn_8_sensors.tar")
+model_path = "checkpoints/train_thighIMU_20251212_084701/best_model.tar"
 model_mode = "QuanTCN"
 
 
@@ -135,3 +135,4 @@ dropout = 0.15
 spatial_dropout = 0.15
 eff_hist = 240
 num_channels = [80, 80, 80, 80, 80]
+norm = "weight_norm"

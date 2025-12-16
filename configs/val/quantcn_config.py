@@ -5,7 +5,7 @@ task_name = "thighIMU"  #sensor_trainData_valData
 
 # ========== 模型加载 ==========
 model_mode = "QuanTCN"
-model_path = "models/trained_quantcn_8_sensors.tar"
+model_path = "checkpoints/train_thighIMU_20251212_095433/best_model.tar"
 
 data_dirs = [
     "/home/sxs/TCN/datasets/EXO/Phase3_Parsed/Parsed",
@@ -98,6 +98,6 @@ participant_masses = {
 	"BT24": 77.79
 }
 
-vel_filter_cutoff = 10.0,
+vel_filter_cutoff = 10.0
 sampling_rate = 200.0
 input_rate = 100

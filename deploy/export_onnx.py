@@ -8,7 +8,7 @@ import sys
 sys.path.append(".")
 from utils.tcn import TCN, QuanTCN
 
-model_path = "models/trained_quantcn_8_sensors.tar"
+model_path = "checkpoints/train_thighIMU_20251212_095433/best_model.tar"
 save_path = "./deploy/trained_quantcn_8_sensors.onnx"
 
 model_info = torch.load(model_path, map_location="cpu")
@@ -60,7 +60,7 @@ if isinstance(tcn, QuanTCN):
     model = onnx.load(save_path)
     graph = model.graph
     
-    chain_ops = ["Unsqueeze", "Div", "Add", "Round", "Clip", "Div"]
+    chain_ops = ["Unsqueeze", "Sub", "Div"]
     nodes_to_remove = []
     current_tensor = start_tensor_name
     
@@ -102,10 +102,10 @@ if isinstance(tcn, QuanTCN):
         graph.initializer.remove(init)
         print(f"已删除未使用的 initializer: {init.name}")
     
-    # 修改输入节点的 shape: (N,C,T) -> (N,C,T,1) 并改为 UINT8 类型
+    # 修改输入节点的 shape: (N,C,T) -> (N,C,1,T)
     input_tensor = graph.input[0]
 
-    new_shape = [1, 8, 280, 1]
+    new_shape = [1, 8, 1, 280]
     
     new_input = helper.make_tensor_value_info(
         input_tensor.name,

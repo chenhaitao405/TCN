@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.6)
 
 project(tcn)
 
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR arm)
+
+set(CMAKE_C_COMPILER /home/sxs/modules/2.3.2/release/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc)
+set(CMAKE_CXX_COMPILER /home/sxs/modules/2.3.2/release/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-g++)
+
+set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,--allow-shlib-undefined")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wl,--allow-shlib-undefined")
 
@@ -23,7 +30,7 @@ add_executable(attr_show
 )
 
 target_link_libraries(attr_show
-${RKNN_RT_LIB}
+    ${RKNN_RT_LIB}
 )
 
 # install target and libraries
@@ -33,3 +40,5 @@ install(PROGRAMS ${RKNN_RT_LIB} DESTINATION lib)
 install(FILES ../deploy/trained_quantcn_8_sensors.rknn DESTINATION ./model)
 
 install(FILES ../deploy/datasets/jump_1.npy DESTINATION ./model/)
+install(FILES ../deploy/datasets/jump_10.npy DESTINATION ./model/)
+install(FILES ../deploy/datasets/normal_walk_2-5_1.npy DESTINATION ./model/)

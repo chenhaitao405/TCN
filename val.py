@@ -37,11 +37,10 @@ def validate_model(model, dataloader, device, config, label_names, dataset):
             # Skip batch if input contains NaN
             if torch.isnan(inputs).any():
                 continue
-
             # Forward pass
             estimates = model(inputs)
             if len(estimates.shape) == 4:
-                estimates = estimates.squeeze(-1)
+                estimates = estimates.squeeze(-2)
             # Skip if output contains NaN
             if torch.isnan(estimates).any():
                 continue

@@ -41,9 +41,9 @@ def main():
         load_weights=args.use_pretrained
     )
     model = model.to(device)
-    data_input = np.load("deploy/datasets/jump_1.npy").astype(np.float32).reshape(1,8,280)
-    data_input = (data_input - np.array([117., 128., 128.,  44.,   0., 158., 251., 123.]).reshape(1,-1,1)) * \
-        np.array([0.2152, 0.3451, 0.7216, 0.0459, 0.0549, 0.0193, 0.3545, 0.9591]).reshape(1,-1,1)
+    data_input = np.load("deploy/datasets/jump_10.npy").astype(np.float32).reshape(1,8,280)
+    # data_input = (data_input - np.array([117., 128., 128.,  44.,   0., 158., 251., 123.]).reshape(1,-1,1)) * \
+    #     np.array([0.2152, 0.3451, 0.7216, 0.0459, 0.0549, 0.0193, 0.3545, 0.9591]).reshape(1,-1,1)
     # 1,C,T
     data_input = torch.from_numpy(data_input).to(device).float()
     model.eval()
