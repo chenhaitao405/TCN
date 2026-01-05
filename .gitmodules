@@ -1,3 +1,0 @@
-[submodule "test_check/zyy-imu"]
-	path = test_check/zyy-imu
-	url = https://github.com/chenhaitao405/TCN.git
