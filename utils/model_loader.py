@@ -62,7 +62,7 @@ class ModelLoader:
 
         # Load pretrained weights if requested and available
         if load_weights and state_dict is not None:
-            tcn.load_state_dict(state_dict)
+            tcn.load_state_dict(state_dict, strict=False)
             print("Loaded pretrained weights successfully!")
         elif load_weights and state_dict is None:
             raise ValueError("No state_dict found in model file!")

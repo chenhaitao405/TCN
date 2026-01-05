@@ -4,13 +4,22 @@ import os
 task_name = "thighIMU"  #sensor_trainData_valData
 
 # ========== 模型加载 ==========
-model_mode = "QuanTCN"
-model_path = "checkpoints/train_thighIMU_20251212_095433/best_model.tar"
+model_mode = "TCN"
+model_path = "models/knee_8_sensors.tar"
 
 data_dirs = [
     "/home/sxs/TCN/datasets/EXO/Phase3_Parsed/Parsed",
 ]
 
+# 感受野为249 = 1+4+4+8+8+16+16+32+32+64+64
+use_sliding_window = True  # Set to True to use sliding window for training, False to use original mode
+window_size = 280  # Size of each window (number of time steps)
+window_stride = 300  # Stride for sliding window (how many steps to slide) -> increase to decrease validate time
+min_trial_length = 300  # Minimum trial length required (should be >= window_size)
+
+# ========== 数据集划分配置 ==========
+# split_mode: "manual" 使用手动划分（按目录）, "random" 使用随机划分
+split_mode = "manual"  # or "random"
 
 # corresponding leg (model is not dependent on side)
 side = ["l"]

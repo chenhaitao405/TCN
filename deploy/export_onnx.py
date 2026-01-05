@@ -8,19 +8,19 @@ import sys
 sys.path.append(".")
 from utils.tcn import TCN, QuanTCN
 
-model_path = "checkpoints/train_thighIMU_20251212_095433/best_model.tar"
+model_path = "models/knee_8_sensors.tar"
 save_path = "./deploy/trained_quantcn_8_sensors.onnx"
 
 model_info = torch.load(model_path, map_location="cpu")
 state_dict = model_info["state_dict"]
 del model_info["state_dict"]
-tcn_signature = inspect.signature(QuanTCN.__init__)
+tcn_signature = inspect.signature(TCN.__init__)
 tcn_param_names = [param.name for param in tcn_signature.parameters.values()
                     if param.name != 'self']
 
 tcn_params = {k: v for k, v in model_info.items()
                 if k in tcn_param_names}
-tcn = QuanTCN(**tcn_params)
+tcn = TCN(**tcn_params)
 tcn.load_state_dict(state_dict, strict=False)
 tcn.eval()
 
@@ -55,12 +55,12 @@ else:
     exit(0)
 
 # 删除部分量化节点
-if isinstance(tcn, QuanTCN):
+if isinstance(tcn, TCN):
     start_tensor_name = "sensor_inputs"
     model = onnx.load(save_path)
     graph = model.graph
     
-    chain_ops = ["Unsqueeze", "Sub", "Div"]
+    chain_ops = ["Sub", "Div"]
     nodes_to_remove = []
     current_tensor = start_tensor_name
     
@@ -102,20 +102,79 @@ if isinstance(tcn, QuanTCN):
         graph.initializer.remove(init)
         print(f"已删除未使用的 initializer: {init.name}")
     
-    # 修改输入节点的 shape: (N,C,T) -> (N,C,1,T)
+    # 修改输入节点的 shape: (N,C,T) -> (N,C,1,T) 以满足 4D 输入
     input_tensor = graph.input[0]
-
     new_shape = [1, 8, 1, 280]
-    
     new_input = helper.make_tensor_value_info(
         input_tensor.name,
-        elem_type=TensorProto.FLOAT,  
+        elem_type=TensorProto.FLOAT,
         shape=new_shape
     )
-    
     graph.input.remove(input_tensor)
     graph.input.insert(0, new_input)
     print(f"已修改输入形状为 {new_shape}，类型")
+
+    # 在图首插入 Reshape，将 4D 输入还原为原先的 3D (1,8,280)
+    reshape_shape_name = "reshape_to_3d_shape"
+    reshape_out_name = "sensor_inputs_3d"
+    reshape_shape_tensor = helper.make_tensor(
+        name=reshape_shape_name,
+        data_type=TensorProto.INT64,
+        dims=[3],
+        vals=[1, 8, 280]
+    )
+    graph.initializer.append(reshape_shape_tensor)
+    reshape_node = helper.make_node(
+        "Reshape",
+        inputs=[start_tensor_name, reshape_shape_name],
+        outputs=[reshape_out_name],
+        name="Reshape_Input_4D_to_3D"
+    )
+    graph.node.insert(0, reshape_node)
+
+    # 将后续节点的输入从原 input 改为 Reshape 输出
+    for node in graph.node[1:]:
+        for i, input_name in enumerate(node.input):
+            if input_name == start_tensor_name:
+                node.input[i] = reshape_out_name
+                print(f"已将节点 {node.name} 的输入从 {start_tensor_name} 改为 {reshape_out_name}")
+    
+    # 清理多余的 Reshape 节点（如果存在）
+    for node in graph.node:
+        if node.op_type == "Reshape" and node.name != "Reshape_Input_4D_to_3D":
+            graph.node.remove(node)
+            print(f"已删除多余的 Reshape 节点: {node.name}")
+    
+    # 清理无用的输出节点（如果存在）
+    for output in graph.output:
+        if output.name == "sensor_inputs":
+            graph.output.remove(output)
+            print(f"已删除无用的输出节点: {output.name}")
+    
+    # 追加输出 Reshape: (1,1,280) -> (1,1,1,280)
+    reshape_out_shape_name = "reshape_out_shape"
+    reshape_out_tensor = helper.make_tensor(
+        name=reshape_out_shape_name,
+        data_type=TensorProto.INT64,
+        dims=[4],
+        vals=[1, 1, 1, 280],
+    )
+    graph.initializer.append(reshape_out_tensor)
+    reshape_out_node = helper.make_node(
+        "Reshape",
+        inputs=["torque", reshape_out_shape_name],
+        outputs=["torque_4d"],
+        name="Reshape_Output_to_4D",
+    )
+    graph.node.append(reshape_out_node)
+    # 更新输出为 4D
+    while len(graph.output) > 0:
+        graph.output.remove(graph.output[0])
+    graph.output.append(
+        helper.make_tensor_value_info(
+            "torque_4d", TensorProto.FLOAT, [1, 1, 1, 280]
+        )
+    )
     
     # 重新进行形状推断（重要！）
     try:

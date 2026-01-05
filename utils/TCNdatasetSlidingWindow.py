@@ -332,11 +332,11 @@ class TcnDatasetSlidingWindow(Dataset):
             df.loc[:, "thigh_imu_l_accel_z"] *= -1.
             df.loc[:, "insole_l_cop_z"] *= -1.
 
-        input_data = torch.tensor(df[self.input_names].values, device=self.device).transpose(0, 1).unsqueeze(0).float()
+        input_data = torch.tensor(df[self.input_names].values).transpose(0, 1).unsqueeze(0).float()
         return input_data
 
     def _load_label_data(self, file_path: str):
         '''Loads label data from a single file and returns as a 3D torch.FloatTensor.'''
         df = pd.read_csv(file_path)
-        label_data = torch.tensor(df[self.label_names].values, device=self.device).transpose(0, 1).unsqueeze(0).float()
+        label_data = torch.tensor(df[self.label_names].values).transpose(0, 1).unsqueeze(0).float()
         return label_data

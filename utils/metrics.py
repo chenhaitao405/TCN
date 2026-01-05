@@ -86,7 +86,7 @@ class ValidationMetrics:
         self.metrics = {
             'per_label': {name: {'rmse': [], 'r2': [], 'estimates': [], 'labels': []}
                           for name in label_names},
-            'overall': {'rmse': None, 'r2': None}
+            'overall': {'rmse': np.nan, 'r2': np.nan}
         }
 
         # New: per-action metrics
@@ -146,8 +146,8 @@ class ValidationMetrics:
                 all_rmse.append(avg_rmse)
                 all_r2.append(avg_r2)
 
-        self.metrics['overall']['rmse'] = np.mean(all_rmse) if all_rmse else float('nan')
-        self.metrics['overall']['r2'] = np.mean(all_r2) if all_r2 else float('nan')
+        self.metrics['overall']['rmse'] = np.mean(all_rmse) if all_rmse else np.nan
+        self.metrics['overall']['r2'] = np.mean(all_r2) if all_r2 else np.nan
 
     def compute_per_action_summary(self) -> Dict[str, Dict[str, Dict[str, float]]]:
         """Compute summary statistics for each action type."""

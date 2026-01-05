@@ -61,7 +61,7 @@ def prepare_data(config, args, device):
 
         print("=" * 50)
 
-    def _create_datasets(data_manager, config, split_mode, use_sliding_window, device, max_samples):
+    def _create_datasets(data_manager: DataManager, config, split_mode, use_sliding_window, device, max_samples):
         """
         Create train and validation datasets based on split mode.
 
@@ -99,7 +99,7 @@ def prepare_data(config, args, device):
                 use_sliding_window = use_sliding_window,
             )
 
-    def _create_dataloaders(data_manager, train_dataset, val_dataset,
+    def _create_dataloaders(data_manager: DataManager, train_dataset, val_dataset,
                             batch_size, device, use_sliding_window):
         """
         Create data loaders based on training mode.
@@ -262,12 +262,12 @@ class Summary():
         Should be called after update_mean is finalized.
         """
         batch_data = batch_data.to(torch.float64)
-        mean_dim = [i for i in range(len(batch_data.shape)) if i != self.channel_order]
+        sum_dim = [i for i in range(len(batch_data.shape)) if i != self.channel_order]
         
         # Calculate squared differences from mean
         squared_diff = (batch_data - self.mean.view(*[1 if i != self.channel_order else -1 
                                                       for i in range(len(batch_data.shape))])) ** 2
-        _std_add = torch.sum(squared_diff, dim=mean_dim) / self.total_num
+        _std_add = torch.sum(squared_diff, dim=sum_dim) / self.total_num
         self.std += _std_add
     
     def initialize_histograms(self):
@@ -559,16 +559,36 @@ def main():
     # Prepare data
     train_loader, val_loader = prepare_data(config, args, device)
     
-    data_summary = Summary(len(config.sensor_pick), 1, total_num=len(train_loader.dataset) * config.window_size)
-    
-    for data_batch in tqdm.tqdm(train_loader):
-        data_summary.update_max(data_batch[0])
-        data_summary.update_min(data_batch[0])
-        data_summary.update_mean(data_batch[0])
+    count = 0
+    for data_batch in tqdm.tqdm(train_loader, desc="count dataset total num"):
+        for seq_len in data_batch[2]:
+            count += seq_len
         
-    for data_batch in tqdm.tqdm(train_loader):
-        data_summary.update_std(data_batch[0])
-        data_summary.update_distribution(data_batch[0])
+    data_summary = Summary(len(config.sensor_pick), 1, total_num=count)
+    
+    for data_batch in tqdm.tqdm(train_loader, desc="analyse max | min | mean"):
+        if getattr(config, "use_sliding_window", False):
+            data_summary.update_max(data_batch[0])
+            data_summary.update_min(data_batch[0])
+            data_summary.update_mean(data_batch[0])
+        else:
+            for idx in range(len(data_batch[0])):
+                idx_seq_len = data_batch[2][idx]
+                data_sample = data_batch[0][idx:idx+1, :, :idx_seq_len]
+                data_summary.update_max(data_sample)
+                data_summary.update_min(data_sample)
+                data_summary.update_mean(data_sample)
+        
+    for data_batch in tqdm.tqdm(train_loader, desc="compute std | distribution"):
+        if getattr(config, "use_sliding_window", False):
+            data_summary.update_std(data_batch[0])
+            data_summary.update_distribution(data_batch[0])
+        else:
+            for idx in range(len(data_batch[0])):
+                idx_seq_len = data_batch[2][idx]
+                data_sample = data_batch[0][idx:idx+1, :, :idx_seq_len]
+                data_summary.update_std(data_sample)
+                data_summary.update_distribution(data_sample)
         
     data_summary.print_summary(channel_names=config.sensor_pick)
 

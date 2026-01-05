@@ -8,8 +8,8 @@ TEST_ON_DEVICE = True
 
 if __name__ == "__main__":
     rknn = RKNN(verbose=True, verbose_file="log/convert.log")
-    rknn.config(mean_values=[[0.912629, -0.820086, 0.197228, 3.041710, 8.390683, -0.177071, -33.347044, 2.272569]],
-                std_values=[[16.687198, 29.007817, 82.961570, 4.110988, 4.230163, 1.639207, 30.426489, 113.209047]],
+    rknn.config(mean_values=[[0.7113, -0.4300, 0.7254, 2.6529, 8.7143, -0.2818, -30.6663, -0.1348]],
+                std_values=[[21.3148, 45.2281, 81.4140, 3.9808, 4.4334, 1.8336, 27.8284, 107.1712]],
                 quantized_dtype="w8a8",
                 quantized_algorithm="normal",
                 quantized_method="channel",
@@ -35,6 +35,7 @@ if __name__ == "__main__":
     if ret != 0:
         print('Export rknn model failed!')
         exit(ret)
+    print(f"rknn model has saved in {OUT_RKNN_PATH}")
     print('done')
     rknn.release()
     

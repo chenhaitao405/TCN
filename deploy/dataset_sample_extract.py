@@ -106,7 +106,7 @@ class DatasetSampler:  # 重命名为 Sampler 更贴切，或者保持 DatasetSu
         # save_data = save_data / np.array([0.2152, 0.3451, 0.7216, 0.0459, 0.0549, 0.0193, 0.3545, 0.9591]).reshape(1,-1,1) +\
         # np.array([117., 128., 128.,  44.,   0., 158., 251., 123.]).reshape(1,-1,1)
         # save_data = np.clip(np.round(save_data), 0, 255).astype(np.uint8)
-        save_data[:, -3, :] = np.clip(save_data[:, -3, :], -42.8, 36.7)
+        # save_data[:, -3, :] = np.clip(save_data[:, -3, :], -42.8, 36.7)
         np.save(save_path, np.expand_dims(save_data, -2).astype(np.float32))  # (1,C,1,T)
         self.txt_file.write(os.path.relpath(save_path, os.path.dirname(self.txt_path)) + '\n')
         

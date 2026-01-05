@@ -121,7 +121,18 @@ def validate_model(model, dataloader, device, config, label_names, dataset):
                 })
 
     # Compute overall metrics
-    metrics.compute_overall_metrics()
+    # metrics.compute_overall_metrics()
+    all_rmse = []
+    all_r2 = []
+    for name in metrics.label_names:
+        label_metrics = metrics.metrics['per_label'][name]
+        avg_rmse = computer.compute_rmse(torch.tensor(label_metrics['labels']),
+                                         torch.tensor(label_metrics['estimates'])).item()
+        avg_r2 = computer.compute_r2(torch.tensor(label_metrics['labels']), torch.tensor(label_metrics['estimates']))
+        all_rmse.append(avg_rmse)
+        all_r2.append(avg_r2)
+    metrics.metrics['overall']['rmse'] = np.mean(all_rmse) if all_rmse else np.nan
+    metrics.metrics['overall']['r2'] = np.mean(all_r2) if all_r2 else np.nan
 
     return metrics
 
