@@ -42,9 +42,26 @@ class ConfigManager:
         if hasattr(config, 'sensor_pick') and config.sensor_pick:
             # Filter input_names based on sensor_pick indices
             if hasattr(config, 'input_names'):
-                original_input_names = config.input_names.copy()
-                filtered_input_names = [config.input_names[i] for i in config.sensor_pick
-                                       if i < len(config.input_names)]
+                # 缓存一份完整列表，避免多次调用时被反复裁剪
+                original_input_names = getattr(
+                    config,
+                    '_original_input_names',
+                    list(config.input_names)
+                )
+                if not hasattr(config, '_original_input_names'):
+                    setattr(config, '_original_input_names', list(original_input_names))
+
+                filtered_input_names = [
+                    original_input_names[i]
+                    for i in config.sensor_pick
+                    if 0 <= i < len(original_input_names)
+                ]
+
+                if not filtered_input_names:
+                    raise ValueError(
+                        "sensor_pick 过滤结果为空，请检查配置中的 sensor_pick 是否与 input_names 对应。"
+                    )
+
                 config.input_names = filtered_input_names
 
                 print(f"Sensor selection applied:")

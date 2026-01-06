@@ -11,6 +11,22 @@ import argparse
 from collections import deque
 import threading
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# 确保在未 source ROS 环境时也能找到 rospy
+DEFAULT_ROS_DISTRO = os.environ.get("ROS_DISTRO", "noetic")
+DEFAULT_ROS_PYTHON = os.path.join(
+    "/opt/ros",
+    DEFAULT_ROS_DISTRO,
+    "lib",
+    "python3",
+    "dist-packages"
+)
+if os.path.isdir(DEFAULT_ROS_PYTHON) and DEFAULT_ROS_PYTHON not in sys.path:
+    sys.path.append(DEFAULT_ROS_PYTHON)
+
 import numpy as np
 # ROS imports
 import rospy
@@ -26,8 +42,6 @@ import warnings
 
 warnings.filterwarnings('ignore', message='dropout2d: Received a 3D input')
 
-# 添加项目路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from realtime_inference.inference_engine import InferenceEngine
 from devices.custom_data_loader import DataPreprocessor
 
@@ -362,6 +376,10 @@ class InferenceWorker(QThread):
                 # 计算相对时间（从开始推理到现在的秒数）
                 relative_time = current_timestamp - self.start_timestamp
 
+                # 如果推理窗口尚未填满，engine 会返回空字典，此时不应继续向下执行
+                if not moments:
+                    return
+
                 first_key = list(moments.keys())[0]
                 return_moments = {first_key: raw_data['moment']}
 
@@ -470,6 +488,7 @@ class ROSInferenceUI(QMainWindow):
         self.current_moments = {}
         self.current_return_moment = 0  # 新增：当前返回值
         self.current_joint = None
+        self.last_timestamp_sensor = 0.0  # 最近一次推理帧的传感器时间戳
 
         # 性能数据
         self.inference_speed = 0
@@ -830,7 +849,11 @@ class ROSInferenceUI(QMainWindow):
         self.body_weight = value
         # 更新发布线程的体重值
         if self.publish_worker and self.current_moments:
-            self.publish_worker.update_moments_with_timestamp(self.current_moments, self.body_weight)
+            self.publish_worker.update_moments_with_timestamp(
+                self.current_moments,
+                self.body_weight,
+                self.last_timestamp_sensor
+            )
         self.add_log("INFO", f"体重更新为: {value} kg (影响发送值计算)")
         # 立即更新当前显示的发送值
         self.update_current_values()
@@ -868,6 +891,9 @@ class ROSInferenceUI(QMainWindow):
             buffer.clear()
         for buffer in self.return_moment_buffers.values():
             buffer.clear()
+
+        # 每次重新启动推理都重置时延统计，避免延续旧的平均值
+        self.reset_latency_stats()
 
         if self.inference_worker is None:
             self.inference_worker = InferenceWorker(self.config_path, self.side)
@@ -947,16 +973,7 @@ class ROSInferenceUI(QMainWindow):
             self.runtime_label.setText("运行时间: 0.0 s")
 
         # 重置时延统计
-        self.current_latency = 0.0
-        self.latency_sum = 0.0
-        self.latency_count = 0
-        self.avg_latency = 0.0
-        self.max_latency = 0.0
-        self.min_latency = float('inf')
-        self.first_return_received = False  # 重置首次返回标志
-        self.latency_label.setText("当前时延: -- ms")
-        self.avg_latency_label.setText("平均时延: -- ms")
-        self.latency_range_label.setText("时延范围: -- ~ -- ms")
+        self.reset_latency_stats()
 
         # 更新UI状态
         self.start_inference_btn.setEnabled(True)
@@ -967,6 +984,20 @@ class ROSInferenceUI(QMainWindow):
         self.inference_status_label.setStyleSheet("color: gray;")
 
         self.add_log("INFO", "推理已停止")
+
+    def reset_latency_stats(self):
+        """重置时延统计并刷新UI显示"""
+        self.current_latency = 0.0
+        self.latency_sum = 0.0
+        self.latency_count = 0
+        self.avg_latency = 0.0
+        self.max_latency = 0.0
+        self.min_latency = float('inf')
+        self.first_return_received = False
+
+        self.latency_label.setText("当前时延: -- ms")
+        self.avg_latency_label.setText("平均时延: -- ms")
+        self.latency_range_label.setText("时延范围: -- ~ -- ms")
 
     def on_start_publish(self):
         """开始发布力矩"""
@@ -1036,9 +1067,14 @@ class ROSInferenceUI(QMainWindow):
                 # 为每个关节保存相同的返回值
                 self.return_moment_buffers[joint_name].append(return_moment[joint_name])
 
+        if not moments:
+            return
+
         # 保存当前力矩值和返回值
         self.current_moments = moments
         self.current_return_moment = return_moment
+
+        self.last_timestamp_sensor = relative_time
 
         if self.publish_worker and self.is_publishing:
             self.publish_worker.update_moments_with_timestamp(
@@ -1090,9 +1126,14 @@ class ROSInferenceUI(QMainWindow):
                 if joint_name in self.return_moment_buffers and joint_name in return_moment:
                     self.return_moment_buffers[joint_name].append(return_moment[joint_name])
 
+        if not moments:
+            return
+
         # 保存当前力矩值和返回值
         self.current_moments = moments
         self.current_return_moment = return_moment
+
+        self.last_timestamp_sensor = timestamp_sensor
 
         if self.publish_worker and self.is_publishing:
             self.publish_worker.update_moments_with_timestamp(
