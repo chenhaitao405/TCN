@@ -22,7 +22,7 @@ def create_argument_parser():
                         help='Path to recorded binary data file')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
                         help='Device to use for inference')
-    parser.add_argument('--interval', type=int, default=10,
+    parser.add_argument('--interval', type=int, default=5,
                         help='Animation interval in ms (simulates real-time)')
     parser.add_argument('--history_len', type=int, default=500,
                         help='Number of frames to show in plot history')
@@ -115,9 +115,9 @@ def main():
     model.eval()
     print("Model loaded successfully!")
     
-    # 初始化输出滤波器：2阶巴特沃斯低通，截止频率10Hz，采样率100Hz
-    output_filter = RealtimeButterworthFilter(order=2, cutoff_freq=10.0, sample_rate=100.0)
-    print("\nOutput filter initialized: 2nd order Butterworth lowpass, cutoff=10Hz, sample_rate=100Hz")
+    # 初始化输出滤波器：2阶巴特沃斯低通，截止频率5Hz，采样率200Hz
+    output_filter = RealtimeButterworthFilter(order=2, cutoff_freq=5.0, sample_rate=200.0)
+    print("\nOutput filter initialized: 2nd order Butterworth lowpass, cutoff=5Hz, sample_rate=200Hz")
 
     # 选择的输入通道索引 (0,1,2,6) -> gyro_x, gyro_y, gyro_z, motorPos
     display_channels = [0, 1, 2, 6]
@@ -155,7 +155,7 @@ def main():
     ax_torque.set_title('Predicted Knee Moment (Raw vs Filtered vs Quan)')
     ax_torque.grid(True, alpha=0.3)
     raw_torque_line, = ax_torque.plot([], [], 'b-', linewidth=1, alpha=0.5, label='Raw')
-    filtered_torque_line, = ax_torque.plot([], [], 'r-', linewidth=1.5, label='Filtered (10Hz LP)')
+    filtered_torque_line, = ax_torque.plot([], [], 'r-', linewidth=1.5, label='Filtered (5Hz LP)')
     quan_torque_line, = ax_torque.plot([], [], 'g-', linewidth=1.5, label='quantize model')
     ax_torque.legend(loc='upper right')
     

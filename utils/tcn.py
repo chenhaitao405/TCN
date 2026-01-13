@@ -373,9 +373,10 @@ class QuanTCN(nn.Module):
 		self.output_layer = nn.Conv2d(num_channels[-1], output_size, kernel_size=1, padding=0)
 		self.init_weights()
 		self.eff_hist = eff_hist
-  
-		norm_means = torch.tensor([0.912629, -0.820086, 0.197228, 3.041710, 8.390683, -0.177071, -33.347044, 2.272569]).reshape(1,-1,1,1)
-		norm_stds = torch.tensor([16.687198, 29.007817, 82.961570, 4.110988, 4.230163, 1.639207, 30.426489, 113.209047]).reshape(1,-1,1,1)
+		# norm_means = torch.tensor([0.912629, -0.820086, 0.197228, 3.041710, 8.390683, -0.177071, -33.347044, 2.272569]).reshape(1,-1,1,1)
+		# norm_stds = torch.tensor([16.687198, 29.007817, 82.961570, 4.110988, 4.230163, 1.639207, 30.426489, 113.209047]).reshape(1,-1,1,1)
+		norm_means = torch.tensor([0.7113,  -0.4300,   0.7254,   2.6529,   8.7143,  -0.2818, -30.6663, -0.1348]).reshape(1,-1,1,1)
+		norm_stds = torch.tensor([21.3148,  45.2281,  81.4140,   3.9808,   4.4334,   1.8336,  27.8284, 107.1712]).reshape(1,-1,1,1)
 		self.register_buffer("mean", norm_means)
 		self.register_buffer("std", norm_stds)
 

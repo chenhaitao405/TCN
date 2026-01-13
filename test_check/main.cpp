@@ -16,10 +16,11 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <arm_neon.h>
 
 // ================= 常量定义 =================
 constexpr int RECORD_FRAME_NUMS_DEFAULT = 5000;
-constexpr int INFER_INTERVAL_MS = 10;  // 推理间隔 (ms)--100Hz
+constexpr int INFER_INTERVAL_MS = 5;   // 推理间隔 (ms)--200Hz
 constexpr const char* RECORD_FILE_PATH_DEFAULT = "/data/record_data.bin";
 
 // ================= 外部接口声明 =================
@@ -231,7 +232,6 @@ int main(int argc, char** argv) {
     int channel = 8;
     int h = input_attrs[0].dims[2];
     int w = input_attrs[0].dims[3];
-    int C2 = input_attrs[0].dims[4];
     int expected_frames = h * w;
 
     // 等待数据流填满
@@ -296,13 +296,14 @@ int main(int argc, char** argv) {
     }
     
     if (do_infer && !g_output_filter_initialized) {
-        g_output_filter.setup(2, 100.0, 5.0);
+        g_output_filter.setup(2, 200.0, 5.0);
         g_output_filter_initialized = true;
     }
     
     // 推理统计
     int infer_count = 0;
     double total_infer_ms = 0.0;
+    int moment_send_count = 0;  // 控制 moment 下发频率为 100Hz（每2次推理下发一次）
     
     printf("Starting %s loop (every %dms), press Ctrl+C to stop...\n", 
            do_infer ? (record_data ? "inference+recording" : "inference") : "recording", 
@@ -315,6 +316,7 @@ int main(int argc, char** argv) {
         {
             std::lock_guard<std::mutex> lock(get_data_stream_mutex());
             const DataStream& ds = get_data_stream();
+            
             if ((int)ds.size() < expected_frames) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(INFER_INTERVAL_MS));
                 continue;
@@ -354,7 +356,7 @@ int main(int argc, char** argv) {
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(loop_end - loop_start).count();
                 if (elapsed < INFER_INTERVAL_MS) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(INFER_INTERVAL_MS - elapsed));
-                }
+                } else printf("[Warning] fps don't reach to requirement\n");
                 continue;
             }
         }
@@ -363,7 +365,7 @@ int main(int argc, char** argv) {
         NCHW_float32_to_NC1HWC2_int8(
             src_buffer.data(),
             (int8_t*)input_mems[0]->virt_addr,
-            batch, channel, h, w, C2,
+            batch, channel, h, w,
             input_attrs[0].scale,
             input_attrs[0].zp,
             g_mean_vals, g_std_vals, channel
@@ -387,8 +389,9 @@ int main(int argc, char** argv) {
         float raw_output = (((int32_t)((int8_t*)output_mems[0]->virt_addr)[279*16]) - output_attrs[0].zp) * output_attrs[0].scale;
         float filtered_output = filter_output(raw_output);
         
-        // 5. 发送力矩指令
-        if (transfer_moment) send_moment(filtered_output*14.f, 0.0f);
+        // 5. 发送力矩指令 (每2次推理下发一次，保持100Hz)
+        moment_send_count++;
+        if (transfer_moment && moment_send_count % 2 == 0) send_moment(filtered_output*10.f, 0.0f);
 
         // 6. 打印统计信息
         if (!record_data && infer_count % 10 == 0) {

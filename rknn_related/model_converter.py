@@ -11,7 +11,7 @@ if __name__ == "__main__":
     rknn.config(mean_values=[[0.7113, -0.4300, 0.7254, 2.6529, 8.7143, -0.2818, -30.6663, -0.1348]],
                 std_values=[[21.3148, 45.2281, 81.4140, 3.9808, 4.4334, 1.8336, 27.8284, 107.1712]],
                 quantized_dtype="w8a8",
-                quantized_algorithm="normal",
+                quantized_algorithm="mmse",
                 quantized_method="channel",
                 target_platform="rv1106",
                 quant_img_RGB2BGR=False

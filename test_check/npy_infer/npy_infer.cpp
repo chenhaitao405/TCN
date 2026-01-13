@@ -386,7 +386,7 @@ int main(int argc, char** argv) {
     }
     printf("successfully run\n");
     printf("last element is %d\n", ((int8_t *)output_mems[0]->virt_addr)[279*16]);
-    send_int8_list_adb((int8_t *)output_mems[0]->virt_addr, output_attrs->size_with_stride, C2);
+    // send_int8_list_adb((int8_t *)output_mems[0]->virt_addr, output_attrs->size_with_stride, C2);
 out:
     rknn_destroy_mem(ctx, input_mems[0]);
     rknn_destroy_mem(ctx, output_mems[0]);

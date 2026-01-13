@@ -14,24 +14,24 @@ import numpy as np
 class DatasetSampler:  # 重命名为 Sampler 更贴切，或者保持 DatasetSummary
     
     ACTION_PATTERNS = [
-        r".*jump_.*",
-        r".*incline_walk_.*",
-        r".*poses_.*",
-        r".*stairs_.*",
-        r".*normal_walk_.*_0-6.*",
-        r".*normal_walk_.*_1-2.*",
-        r".*normal_walk_.*_1-8.*",
-        r".*normal_walk_.*_2-0.*",
-        r".*normal_walk_.*_2-5.*",
-        r".*normal_walk_.*_shuffle.*",
-        r".*normal_walk_.*_skip.*",
-        r".*walk_backward_.*",
-        r".*weighted_walk_.*",
-        r".*cutting_.*",
-        r".*sit_to_stand_.*",
-        r".*start_stop_.*",
-        r".*turn_and_step_.*",
-        r".*squats_.*"
+        r".*jump_.*",                   #1
+        r".*incline_walk_.*",           #2
+        r".*poses_.*",                  #3
+        r".*stairs_.*",                 #4
+        r".*normal_walk_.*_0-6.*",      #5
+        r".*normal_walk_.*_1-2.*",      #6
+        r".*normal_walk_.*_1-8.*",      #7
+        r".*normal_walk_.*_2-0.*",      #8
+        r".*normal_walk_.*_2-5.*",      #9
+        r".*normal_walk_.*_shuffle.*",  #10
+        r".*normal_walk_.*_skip.*",     #11
+        r".*walk_backward_.*",          #12
+        r".*weighted_walk_.*",          #13
+        r".*cutting_.*",                #14
+        r".*sit_to_stand_.*",           #15
+        r".*start_stop_.*",             #16
+        r".*turn_and_step_.*",          #17
+        r".*squats_.*"                  #18
     ]
     
     ACTION_NUM = [
@@ -40,8 +40,24 @@ class DatasetSampler:  # 重命名为 Sampler 更贴切，或者保持 DatasetSu
     ]
     
     SAMPLE_NUM = [
-        15, 20, 25, 10, 5, 5, 5, 5, 5, 
-        4, 4, 15, 5, 5, 30, 10, 5, 5
+        5, #1
+        10, #2 
+        25, #3
+        10, #4
+        10,  #5
+        10,  #6
+        5,  #7
+        0,  #8
+        0,  #9
+        4,  #10
+        0,  #11
+        15, #12
+        0,  #13
+        0,  #14
+        15, #15
+        5, #16
+        5,  #17
+        0   #18
     ]
     
     ACTION_NAMES = [
@@ -141,7 +157,8 @@ class DatasetSampler:  # 重命名为 Sampler 更贴切，或者保持 DatasetSu
                     self.current_counts[matched_action] += 1
                     
                     # 2. 检查是否达到采样间隔
-                    if self.current_counts[matched_action] >= int(self.next_milestones[matched_action]):
+                    milestone = self.next_milestones[matched_action]
+                    if not (milestone == float('inf')) and self.current_counts[matched_action] >= int(milestone):
                         
                         # 执行保存
                         self.save_sample(

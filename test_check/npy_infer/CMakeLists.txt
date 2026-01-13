@@ -40,4 +40,3 @@ install(FILES ../../deploy/trained_quantcn_8_sensors.rknn DESTINATION ./model)
 
 install(FILES ../../deploy/datasets/jump_1.npy DESTINATION ./model/)
 install(FILES ../../deploy/datasets/jump_10.npy DESTINATION ./model/)
-install(FILES ../../deploy/datasets/normal_walk_2-5_1.npy DESTINATION ./model/)

@@ -8,7 +8,7 @@ import sys
 sys.path.append(".")
 from utils.tcn import TCN, QuanTCN
 
-model_path = "models/knee_8_sensors.tar"
+model_path = "models/cht_best_model.tar"
 save_path = "./deploy/trained_quantcn_8_sensors.onnx"
 
 model_info = torch.load(model_path, map_location="cpu")

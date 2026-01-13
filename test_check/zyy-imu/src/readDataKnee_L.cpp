@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
+#include <sys/select.h>
 #include <cstring>
 #include <sstream>
 #include <iomanip>
@@ -150,21 +151,37 @@ private:
     void processLoop() {
         bool first_in = true;
         bool find_new_head = false;
+        
+        fd_set read_fds;
+        struct timeval timeout;
 
-while (running_) {
+        while (running_) {
+            // ========== 事件驱动：等待串口可读 ==========
+            FD_ZERO(&read_fds);
+            FD_SET(serial_port_, &read_fds);
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 10000;  // 10ms 超时，保证能响应 running_ 变化
+            
+            int ready = select(serial_port_ + 1, &read_fds, nullptr, nullptr, &timeout);
+            
+            if (ready <= 0) {
+                // 超时或错误，直接继续（无需额外 sleep）
+                continue;
+            }
+            
+            // 背压控制：缓冲区积压过多时短暂让出CPU
+            if (buff_dy_.size() > 384) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+
             memset(read_buffer_, 0, sizeof(read_buffer_));
             int bytes_read = read(serial_port_, read_buffer_, sizeof(read_buffer_) - 1);
 
-            if (bytes_read <= 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
-            }
-
+            if (bytes_read <= 0) continue;  // select 说有数据但读不到，跳过
             if (bytes_read > 200) continue; // 简单过滤异常包
 
             if (first_in) {
                 first_in = false;
-                // 首次仅做简单处理或忽略，此处直接压入后续逻辑处理
             }
 
             for (int i = 0; i < bytes_read; ++i) {
@@ -248,7 +265,7 @@ static Dsp::SimpleFilter<Dsp::Butterworth::LowPass<2>, 1> g_motorvel_filter;
 static bool g_filter_initialized = false;
 
 // 用于线性插值的上一帧数据
-static KneeData g_prev_data;
+static DataFrame g_prev_data;
 static bool g_has_prev_data = false;
 
 // 侧边标识：'l' 左腿, 'r' 右腿
@@ -259,18 +276,18 @@ void set_imu_side(char side) {
     g_imu_side = side;
 }
 
-static void interpolate_frame(const KneeData& prev, const KneeData& curr, float t, DataFrame& out) {
-    out.gyro_x = prev.gyro[0] + t * (curr.gyro[0] - prev.gyro[0]);
-    out.gyro_y = prev.gyro[1] + t * (curr.gyro[1] - prev.gyro[1]);
-    out.gyro_z = prev.gyro[2] + t * (curr.gyro[2] - prev.gyro[2]);
-    out.acc_x = prev.acc[0] + t * (curr.acc[0] - prev.acc[0]);
-    out.acc_y = prev.acc[1] + t * (curr.acc[1] - prev.acc[1]);
-    out.acc_z = prev.acc[2] + t * (curr.acc[2] - prev.acc[2]);
-    out.motorPos = prev.motorPosL + t * (curr.motorPosL - prev.motorPosL);
+static void interpolate_frame(const DataFrame& prev, const DataFrame& curr, float t, DataFrame& out) {
+    out.gyro_x = prev.gyro_x + t * (curr.gyro_x - prev.gyro_x);
+    out.gyro_y = prev.gyro_y + t * (curr.gyro_y - prev.gyro_y);
+    out.gyro_z = prev.gyro_z + t * (curr.gyro_z - prev.gyro_z);
+    out.acc_x = prev.acc_x + t * (curr.acc_x - prev.acc_x);
+    out.acc_y = prev.acc_y + t * (curr.acc_y - prev.acc_y);
+    out.acc_z = prev.acc_z + t * (curr.acc_z - prev.acc_z);
+    out.motorPos = prev.motorPos + t * (curr.motorPos - prev.motorPos);
     out.motorVel = prev.motorVel + t * (curr.motorVel - prev.motorVel);
 }
 
-inline void transform_frame(const KneeData& data, KneeData& transformed_data) {
+inline void transform_frame(const KneeData& data, DataFrame& transformed_data) {
     // 1. 坐标系旋转变换
     // paper_x = device_y, paper_y = -device_x, paper_z = device_z
     float gyro_x_transformed = data.gyro[1];
@@ -288,15 +305,15 @@ inline void transform_frame(const KneeData& data, KneeData& transformed_data) {
         acc_z_transformed *= -1.0f;
     }
     
-    transformed_data.gyro[0] = gyro_x_transformed;
-    transformed_data.gyro[1] = gyro_y_transformed;
-    transformed_data.gyro[2] = gyro_z_transformed;
-    transformed_data.acc[0] = acc_x_transformed;
-    transformed_data.acc[1] = acc_y_transformed;
-    transformed_data.acc[2] = acc_z_transformed;
+    transformed_data.gyro_x = gyro_x_transformed;
+    transformed_data.gyro_y = gyro_y_transformed;
+    transformed_data.gyro_z = gyro_z_transformed;
+    transformed_data.acc_x = acc_x_transformed;
+    transformed_data.acc_y = acc_y_transformed;
+    transformed_data.acc_z = acc_z_transformed;
     
     // 3. 电机角度减180度
-    transformed_data.motorPosL = data.motorPosL - 180.0f;
+    transformed_data.motorPos = data.motorPosL - 180.0f;
     
     // 4. 电机速度除以2
     transformed_data.motorVel = data.motorVel / 2.0f;
@@ -330,61 +347,39 @@ bool start_imu_driver(const std::string& portName) {
     g_has_prev_data = false;
     
     g_driver->setCallback([&](const KneeData& data) {
-        // static int count = 0;
-        // if (count++ % 100 == 0) { // 每100帧打印一次
-        //     std::cout << std::fixed << std::setprecision(3)
-        //               << "Parsed Data -> "
-        //               << "M_PosL: " << data.motorPosL 
-        //               << " | AccX: " << data.acc[0]
-        //               << " | GyroZ: " << data.gyro[2] 
-        //               << " | MomentRev: " << data.momentRev << std::endl;
-        // }
+        DataFrame interp_frame, frame;
+        transform_frame(data, frame);
+        
+        // 对插值帧的motorVel进行滤波
+        if (g_has_prev_data) {
+            interpolate_frame(g_prev_data, frame, 0.5f, interp_frame);
+            float* ch_interp[1] = {&interp_frame.motorVel};
+            g_motorvel_filter.process(1, ch_interp);
+        }
+        
+        // 对当前帧motorVel进行滤波
+        float* ch_curr[1] = {&frame.motorVel};
+        g_motorvel_filter.process(1, ch_curr);
 
         {
-            std::lock_guard<std::mutex> lock(g_data_stream_mutex);
-            KneeData data_frame;
-            transform_frame(data, data_frame);
+            std::lock_guard<std::mutex> lk(g_data_stream_mutex);
             if (g_has_prev_data) {
-                DataFrame interp_frame;
-                interpolate_frame(g_prev_data, data_frame, 0.5f, interp_frame);
-                
-                // 对插值帧的motorVel进行滤波
-                float vel_interp = interp_frame.motorVel;
-                float* ch_interp[1] = {&vel_interp};
-                g_motorvel_filter.process(1, ch_interp);
-                interp_frame.motorVel = vel_interp;
-                
                 g_data_stream.push_back(interp_frame);
                 if (g_data_stream.size() > STREAM_LENGTH) {
                     g_data_stream.pop_front();
                 }
             }
-            
-            // 推入当前帧
-            DataFrame frame;
-            frame.gyro_x = data_frame.gyro[0];
-            frame.gyro_y = data_frame.gyro[1];
-            frame.gyro_z = data_frame.gyro[2];
-            frame.acc_x = data_frame.acc[0];
-            frame.acc_y = data_frame.acc[1];
-            frame.acc_z = data_frame.acc[2];
-            frame.motorPos = data_frame.motorPosL;
-            
-            // 对当前帧motorVel进行滤波
-            float vel_curr = data_frame.motorVel;
-            float* ch_curr[1] = {&vel_curr};
-            g_motorvel_filter.process(1, ch_curr);
-            frame.motorVel = vel_curr;
 
             g_data_stream.push_back(frame);
             if (g_data_stream.size() > STREAM_LENGTH) {
                 g_data_stream.pop_front();
             }
-            
-            g_prev_data = data_frame;
-            g_has_prev_data = true;
         }
+
+        g_prev_data = std::move(frame);
+        g_has_prev_data = true;
     });
+
     g_driver->start();
     return true;
 }
