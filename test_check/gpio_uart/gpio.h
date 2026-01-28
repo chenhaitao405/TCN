@@ -7,56 +7,170 @@
 #include <chrono>
 #include <iostream>
 
-class GpioPin {
-private:
-    int pin;
-    std::string gpio_path;
-    bool out_mode;
+class GpioPin
+{
 
 public:
-    GpioPin(int pin_num, bool out_mode) : pin(pin_num), out_mode(out_mode) {
+    // 触发方式
+    enum class EDGE
+    {
+        RISING,
+        FALLING,
+        BOTH,
+        None
+    };
+    // IO模式
+    enum class DIRECTION
+    {
+        IN,
+        OUT
+    };
+
+    GpioPin(int pin_num, DIRECTION direction, EDGE edge = EDGE::None) : pin(pin_num), direction(direction), edge(edge)
+    {
         gpio_path = "/sys/class/gpio/gpio" + std::to_string(pin_num);
+        value_path = gpio_path + std::string("/value");
         std::ofstream export_file("/sys/class/gpio/export");
-        if (export_file.is_open()) {
+        if (export_file.is_open())
+        {
             export_file << pin;
             export_file.close();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         std::ofstream dir_file(gpio_path + "/direction");
-        if (dir_file.is_open()) {
-            if (out_mode) dir_file << "out";
-            else dir_file << "in";
+        if (dir_file.is_open())
+        {
+            switch (direction)
+            {
+            case DIRECTION::OUT:
+                dir_file << "out";
+                break;
+            case DIRECTION::IN:
+                dir_file << "in";
+                break;
+            }
             dir_file.close();
-        } else {
+        }
+        else
+        {
             std::cerr << "[Error] can't assign GPIO" << pin << " direction, maybe permission denied" << std::endl;
+        }
+        std::ofstream edge_file(gpio_path + "/edge");
+        if (edge_file.is_open())
+        {
+            switch (edge)
+            {
+            case EDGE::BOTH:
+                edge_file << "both";
+                break;
+            case EDGE::RISING:
+                edge_file << "rising";
+                break;
+            case EDGE::FALLING:
+                edge_file << "falling";
+                break;
+            case EDGE::None:
+                edge_file << "none";
+                break;
+            }
+            edge_file.close();
+        }
+        else
+        {
+            std::cerr << "[Error] can't assign GPIO" << pin << " edge, maybe permission denied" << std::endl;
         }
     }
 
-    ~GpioPin() {
+    ~GpioPin()
+    {
         std::ofstream unexport_file("/sys/class/gpio/unexport");
-        if (unexport_file.is_open()) {
+        if (unexport_file.is_open())
+        {
             unexport_file << pin;
         }
     }
 
-    bool write(int value) {
+    int read() {
+        std::ifstream file(gpio_path + "/value");
+        int value = -1;
+        if (file.is_open()) {
+            file >> value;
+        }
+        file.close();
+        return value;
+    }
+
+    bool write(int value)
+    {
         std::ofstream value_file(gpio_path + "/value");
-        if (value_file.is_open()) {
+        if (value_file.is_open())
+        {
             value_file << (value ? "1" : "0");
             value_file.flush();
-        } else return false;
+        }
+        else
+            return false;
         return true;
     }
 
-    bool set_io_mode(bool out_mode) {
+    bool set_io_mode(DIRECTION _direction) {
         std::ofstream dir_file(gpio_path + "/direction");
-        if (dir_file.is_open()) {
-            if (out_mode) dir_file << "out";
-            else dir_file << "in";
+        if (dir_file.is_open())
+        {
+            switch (_direction)
+            {
+            case DIRECTION::IN:
+                dir_file << "in";
+                break;
+            case DIRECTION::OUT:
+                dir_file << "out";
+                break;
+            }
+            this->direction = _direction; 
             dir_file.close();
-        } else return false;
+        }
+        else
+            return false;
         return true;
     }
+
+    bool set_gpio_edge(EDGE _edge) {
+        std::ofstream edge_file(gpio_path + "/edge");
+        if (edge_file.is_open())
+        {
+            switch (_edge)
+            {
+            case EDGE::BOTH:
+                edge_file << "both";
+                break;
+            case EDGE::RISING:
+                edge_file << "rising";
+                break;
+            case EDGE::FALLING:
+                edge_file << "falling";
+                break;
+            case EDGE::None:
+                edge_file << "none";
+                break;
+            }
+            this->edge = _edge; 
+            edge_file.close();
+        }
+        else
+            return false;
+        return true;
+    }
+
+    std::string get_value_path(){
+        return this->value_path;
+    }
+private:
+    int pin;
+    std::string gpio_path;
+    std::string value_path;
+    std::string direction_path;
+    DIRECTION direction;
+    EDGE edge;
 };
 
 #endif

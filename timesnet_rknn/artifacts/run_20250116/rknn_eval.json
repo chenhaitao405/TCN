@@ -1,0 +1,38 @@
+{
+  "mode": "simulator",
+  "target": "simulator",
+  "overall_accuracy": 0.9531003382187148,
+  "num_samples": 4435,
+  "per_class_accuracy": {
+    "upstair": 0.9087719298245615,
+    "downstair": 0.9741496598639455,
+    "walk": 0.9609841827768014,
+    "stand": 0.0
+  },
+  "confusion_matrix": [
+    [
+      777,
+      7,
+      71,
+      0
+    ],
+    [
+      6,
+      716,
+      13,
+      0
+    ],
+    [
+      69,
+      42,
+      2734,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ]
+  ]
+}

@@ -82,6 +82,7 @@ void print_usage(const char* prog_name) {
     printf("    -p, --path <path>   Path to save recorded data (default: %s)\n", RECORD_FILE_PATH_DEFAULT);
     printf("    -n, --num <count>   Number of frames to record (default: %d)\n", RECORD_FRAME_NUMS_DEFAULT);
     printf("    -m, --moment        Enable moment transfer to exoskeleton\n");
+    printf("    -d, --debug         Debug to show more information\n");
     printf("    -h, --help          Show this help message and exit\n\n");
     printf("Examples:\n");
     printf("    # Run inference on left leg with moment transfer\n");
@@ -101,6 +102,7 @@ int main(int argc, char** argv) {
         {"path",    required_argument, nullptr, 'p'},
         {"num",     required_argument, nullptr, 'n'},
         {"moment",  no_argument,       nullptr, 'm'},
+        {"debug",   no_argument,       nullptr, 'd'},
         {"help",    no_argument,       nullptr, 'h'},
         {0,         0,                 0,        0 }
     };
@@ -109,6 +111,7 @@ int main(int argc, char** argv) {
     char side = 'l';
     bool do_infer = false;
     bool record_data = false;
+    bool debug = false;
     bool transfer_moment = false;
     const char* save_path = nullptr;
     int record_num = -1;
@@ -144,7 +147,12 @@ int main(int argc, char** argv) {
                 printf("send moment function is on\n");
                 transfer_moment = true;
                 break;
-
+            
+            case 'd':
+                printf("debug is on\n");
+                debug = true;
+                break;
+            
             case 'n':
                 record_num = atoi(optarg);
                 if (record_num <= 0) {
@@ -193,6 +201,7 @@ int main(int argc, char** argv) {
         printf("\tMax frames: %d\n", record_num);
     }
     printf("Moment transfer: %s\n", transfer_moment ? "enabled" : "disabled");
+    printf("Debug mode: %s\n", debug ? "enabled" : "disabled");
     printf("=====================\n\n");
     
     set_imu_side(side);
@@ -394,7 +403,7 @@ int main(int argc, char** argv) {
         if (transfer_moment && moment_send_count % 2 == 0) send_moment(filtered_output*10.f, 0.0f);
 
         // 6. 打印统计信息
-        if (!record_data && infer_count % 10 == 0) {
+        if (debug && infer_count % 20 == 0) {
             printf("[%5d] gyro=(%.2f, %.2f, %.2f) | acc=(%.2f, %.2f, %.2f) | motor=(%.2f, %.2f)\n",
                    infer_count,
                    src_buffer[1 * expected_frames - 1],  // gyro_x
@@ -407,7 +416,7 @@ int main(int argc, char** argv) {
                    src_buffer[8 * expected_frames - 1]); // motorVel
         }
 
-        if (!record_data && infer_count % 20 == 0) {
+        if (debug && infer_count % 20 == 0) {
             double avg_infer_ms = total_infer_ms / infer_count;
             printf("        => raw=%.4f | filtered=%.4f Nm/kg | avg=%.2fms | %.1f fps\n",
                    raw_output, filtered_output, avg_infer_ms, 1000.0 / avg_infer_ms);
@@ -422,7 +431,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        // 7. 控制推理间隔为10ms
+        // 7. 控制推理间隔
         auto loop_end = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(loop_end - loop_start).count();
         if (elapsed < INFER_INTERVAL_MS) std::this_thread::sleep_for(std::chrono::milliseconds(INFER_INTERVAL_MS - elapsed));

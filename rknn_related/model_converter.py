@@ -14,7 +14,6 @@ if __name__ == "__main__":
                 quantized_algorithm="mmse",
                 quantized_method="channel",
                 target_platform="rv1106",
-                quant_img_RGB2BGR=False
                 )
     
     ret = rknn.load_onnx(model=MODEL_PATH)

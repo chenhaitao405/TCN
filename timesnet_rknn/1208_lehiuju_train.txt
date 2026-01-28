@@ -1,0 +1,14 @@
+data_all/0917_split/BT27
+data_all/0917_split/BT25
+data_all/0917_split/bt21
+data_all/0917_split/bt8
+data_all/0917_split/BT4(小儿麻痹)
+data_all/0917_split/bt14
+data_all/0917_split/bt29
+data_all/0917_split/BT13
+data_all/0917_split/BT15
+data_all/0917_split/BT26
+data_all/0917_split/BT31
+data_all/0917_split/bt23
+data_all/0917_split/BT16
+data_all/0917_split/bt12
