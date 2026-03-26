@@ -1,0 +1,16 @@
+#pragma once
+
+#define HIP_DATA_HEAD1 0x7C
+#define HIP_DATA_HEAD2 0xF4
+#define HIP_DATA_END1  0xE3
+#define HIP_DATA_END2  0xEC
+#define HIP_SEND_HEAD1 0x7D
+#define HIP_SEND_HEAD2 0xF4
+#define HIP_SEND_END1 0xE4
+#define HIP_SEND_END2 0xEC
+#define KNEE_DATA_HEAD1 0x7C
+#define KNEE_DATA_HEAD2 0xF4
+#define KNEE_DATA_END1  0xE3
+#define KNEE_DATA_END2  0xEC
+#define KNEE_SEND_HEAD 0xA1
+#define KNEE_SEND_END 0x0A

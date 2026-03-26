@@ -11,6 +11,22 @@ import argparse
 from collections import deque
 import threading
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# 确保在未 source ROS 环境时也能找到 rospy
+DEFAULT_ROS_DISTRO = os.environ.get("ROS_DISTRO", "noetic")
+DEFAULT_ROS_PYTHON = os.path.join(
+    "/opt/ros",
+    DEFAULT_ROS_DISTRO,
+    "lib",
+    "python3",
+    "dist-packages"
+)
+if os.path.isdir(DEFAULT_ROS_PYTHON) and DEFAULT_ROS_PYTHON not in sys.path:
+    sys.path.append(DEFAULT_ROS_PYTHON)
+
 import numpy as np
 # ROS imports
 import rospy
@@ -26,8 +42,6 @@ import warnings
 
 warnings.filterwarnings('ignore', message='dropout2d: Received a 3D input')
 
-# 添加项目路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from realtime_inference.inference_engine import InferenceEngine
 from devices.custom_data_loader import DataPreprocessor
 
@@ -37,12 +51,13 @@ class PublishWorker(QThread):
     status_update = pyqtSignal(float)  # 发布频率
     error_occurred = pyqtSignal(str)
 
-    def __init__(self, topic: str = '/moment', label_hip:bool = False):
+    def __init__(self, topic: str = '/moment', label_hip: bool = False, torque_sign: float = 1.0):
         super().__init__()
         self.topic = topic
         self.is_running = False
         self.publisher = None
         self.label_hip = label_hip
+        self.torque_sign = torque_sign
 
         # 共享数据和线程锁
         self.moments_lock = threading.Lock()
@@ -80,6 +95,7 @@ class PublishWorker(QThread):
         """设置关节数量"""
         with self.moments_lock:
             self.num_joints = num
+
 #TODO: 髋关节的发布要修改
     def run_knee(self):
         self.is_running = True
@@ -102,7 +118,7 @@ class PublishWorker(QThread):
                 with self.moments_lock:
                     if self.current_moments:
                         # 发送值 = 推理值 × 体重 × 0.2
-                        moment_values = [value * self.body_weight * 0.2
+                        moment_values = [self.torque_sign * value * self.body_weight * 0.2
                                          for value in self.current_moments.values()]
 
                         # 将力矩值和时间戳打包在一起发送
@@ -164,7 +180,7 @@ class PublishWorker(QThread):
                 with self.moments_lock:
                     if self.current_moments:
                         # 发送值 = 推理值 × 体重 × 0.2
-                        moment_values = [value * self.body_weight * 0.2
+                        moment_values = [self.torque_sign * value * self.body_weight * 0.2
                                     for value in self.current_moments.values()]
 
                         msg.data = moment_values
@@ -201,9 +217,8 @@ class PublishWorker(QThread):
 
 class InferenceWorker(QThread):
     """推理工作线程"""
-    # 修改信号定义，添加 timestamp_sensor 和 timestamp_back 参数
-    data_ready = pyqtSignal(dict, float, dict, float, float)
-    # sensor_data, moments, timestamp, return_moment, timestamp_sensor, timestamp_back
+    # moments, relative_time, return_moment, timestamp_sensor, timestamp_back, motor_angle
+    data_ready = pyqtSignal(dict, float, dict, float, float, float)
     status_update = pyqtSignal(dict)  # performance stats
     error_occurred = pyqtSignal(str)  # error message
 
@@ -216,7 +231,7 @@ class InferenceWorker(QThread):
         self.is_paused = False
 
         # 初始化推理引擎
-        self.engine = InferenceEngine(config_path)
+        self.engine = InferenceEngine(config_path, side=side)
         self.preprocessor = DataPreprocessor(self.engine.config, side)
 
         # 性能统计
@@ -285,7 +300,7 @@ class InferenceWorker(QThread):
                 # 发送数据信号，使用相对时间（含对ros发布线程更新力矩）
                 self.data_ready.emit(
                     moments,
-                    relative_time,return_moment,0.0,0.0
+                    relative_time, return_moment, 0.0, 0.0, 0.0
                 )
 
                 # 更新统计
@@ -332,6 +347,7 @@ class InferenceWorker(QThread):
                 # 保存返回值
                 timestamp_sensor = raw_data['timestamp_sensor']
                 timestamp_back = raw_data['timestamp_back']
+                transformed_motor_pos = self.preprocessor._transform_motor_pos(raw_data['motorPos'])
 
                 # 预处理数据 - 添加计时
                 preprocess_start = time.time()
@@ -342,6 +358,9 @@ class InferenceWorker(QThread):
                 # 执行推理 - 添加计时
                 inference_start = time.time()
                 moments = self.engine.process_frame(processed_data)
+                # 如果送入模型后的膝角为正，说明当前已经在反向给力，直接禁用输出，避免前后震荡
+                if transformed_motor_pos > 0.0:
+                    moments = {key: 0.0 for key in moments}
 
                 inference_end = time.time()
                 inference_time = (inference_end - inference_start) * 1000  # 转换为毫秒
@@ -362,6 +381,10 @@ class InferenceWorker(QThread):
                 # 计算相对时间（从开始推理到现在的秒数）
                 relative_time = current_timestamp - self.start_timestamp
 
+                # 如果推理窗口尚未填满，engine 会返回空字典，此时不应继续向下执行
+                if not moments:
+                    return
+
                 first_key = list(moments.keys())[0]
                 return_moments = {first_key: raw_data['moment']}
 
@@ -371,7 +394,8 @@ class InferenceWorker(QThread):
                     relative_time,
                     return_moments,
                     timestamp_sensor,  # 传感器时间戳
-                    timestamp_back     # 返回时间戳
+                    timestamp_back,    # 返回时间戳
+                    transformed_motor_pos
                 )
 
                 # 更新统计
@@ -443,6 +467,7 @@ class ROSInferenceUI(QMainWindow):
         self.label_hip = False
         if any("hip" in label_name for label_name in self.config.label_names):
             self.label_hip = True
+        self.torque_sign = -1.0 if self.side == 'r' else 1.0
 
 
         # 初始化ROS节点
@@ -467,9 +492,12 @@ class ROSInferenceUI(QMainWindow):
         self.time_buffer = deque(maxlen=self.plot_buffer_size)
         self.moment_buffers = {}
         self.return_moment_buffers = {}  # 新增：返回值缓存
+        self.motor_angle_buffer = deque(maxlen=self.plot_buffer_size)
         self.current_moments = {}
         self.current_return_moment = 0  # 新增：当前返回值
+        self.current_motor_angle = None
         self.current_joint = None
+        self.last_timestamp_sensor = 0.0  # 最近一次推理帧的传感器时间戳
 
         # 性能数据
         self.inference_speed = 0
@@ -732,7 +760,7 @@ class ROSInferenceUI(QMainWindow):
 
     def create_plot_panel(self) -> QWidget:
         """创建实时曲线显示面板"""
-        panel = QGroupBox("实时力矩曲线 (发送值 vs 返回值)")
+        panel = QGroupBox("实时曲线")
         layout = QVBoxLayout()
 
         # 关节选择
@@ -754,6 +782,10 @@ class ROSInferenceUI(QMainWindow):
         self.peak_value_label = QLabel("峰值: -- Nm")
         self.peak_value_label.setStyleSheet("font-size: 14px;")
         select_layout.addWidget(self.peak_value_label)
+
+        self.motor_angle_value_label = QLabel("电机角度: --")
+        self.motor_angle_value_label.setStyleSheet("font-size: 14px; color: #aa5500;")
+        select_layout.addWidget(self.motor_angle_value_label)
 
         select_layout.addStretch()
         layout.addLayout(select_layout)
@@ -780,6 +812,18 @@ class ROSInferenceUI(QMainWindow):
         )
 
         layout.addWidget(self.plot_widget)
+
+        self.motor_plot_widget = pg.PlotWidget()
+        self.motor_plot_widget.setLabel('left', '电机角度')
+        self.motor_plot_widget.setLabel('bottom', '时间（从开始推理）', units='s')
+        self.motor_plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        self.motor_plot_widget.addLegend()
+        self.motor_angle_curve = self.motor_plot_widget.plot(
+            pen=pg.mkPen(color=(255, 140, 0), width=2),
+            name="串口电机角度"
+        )
+        layout.addWidget(self.motor_plot_widget)
+
         panel.setLayout(layout)
         return panel
 
@@ -830,7 +874,11 @@ class ROSInferenceUI(QMainWindow):
         self.body_weight = value
         # 更新发布线程的体重值
         if self.publish_worker and self.current_moments:
-            self.publish_worker.update_moments_with_timestamp(self.current_moments, self.body_weight)
+            self.publish_worker.update_moments_with_timestamp(
+                self.current_moments,
+                self.body_weight,
+                self.last_timestamp_sensor
+            )
         self.add_log("INFO", f"体重更新为: {value} kg (影响发送值计算)")
         # 立即更新当前显示的发送值
         self.update_current_values()
@@ -864,10 +912,14 @@ class ROSInferenceUI(QMainWindow):
         """开始推理"""
         # 清空之前的数据缓存
         self.time_buffer.clear()
+        self.motor_angle_buffer.clear()
         for buffer in self.moment_buffers.values():
             buffer.clear()
         for buffer in self.return_moment_buffers.values():
             buffer.clear()
+
+        # 每次重新启动推理都重置时延统计，避免延续旧的平均值
+        self.reset_latency_stats()
 
         if self.inference_worker is None:
             self.inference_worker = InferenceWorker(self.config_path, self.side)
@@ -938,25 +990,18 @@ class ROSInferenceUI(QMainWindow):
         # 清空图表
         self.moment_curve.setData([], [])
         self.return_moment_curve.setData([], [])
+        self.motor_angle_curve.setData([], [])
 
         # 重置显示值
         self.current_value_label.setText("发送值: -- Nm")
         self.return_value_label.setText("返回值: -- Nm")
         self.peak_value_label.setText("峰值: -- Nm")
+        self.motor_angle_value_label.setText("电机角度: --")
         if self.runtime_label:
             self.runtime_label.setText("运行时间: 0.0 s")
 
         # 重置时延统计
-        self.current_latency = 0.0
-        self.latency_sum = 0.0
-        self.latency_count = 0
-        self.avg_latency = 0.0
-        self.max_latency = 0.0
-        self.min_latency = float('inf')
-        self.first_return_received = False  # 重置首次返回标志
-        self.latency_label.setText("当前时延: -- ms")
-        self.avg_latency_label.setText("平均时延: -- ms")
-        self.latency_range_label.setText("时延范围: -- ~ -- ms")
+        self.reset_latency_stats()
 
         # 更新UI状态
         self.start_inference_btn.setEnabled(True)
@@ -968,11 +1013,25 @@ class ROSInferenceUI(QMainWindow):
 
         self.add_log("INFO", "推理已停止")
 
+    def reset_latency_stats(self):
+        """重置时延统计并刷新UI显示"""
+        self.current_latency = 0.0
+        self.latency_sum = 0.0
+        self.latency_count = 0
+        self.avg_latency = 0.0
+        self.max_latency = 0.0
+        self.min_latency = float('inf')
+        self.first_return_received = False
+
+        self.latency_label.setText("当前时延: -- ms")
+        self.avg_latency_label.setText("平均时延: -- ms")
+        self.latency_range_label.setText("时延范围: -- ~ -- ms")
+
     def on_start_publish(self):
         """开始发布力矩"""
         # 创建发布线程
         if self.publish_worker is None:
-            self.publish_worker = PublishWorker(self.pub_topic,self.label_hip)
+            self.publish_worker = PublishWorker(self.pub_topic, self.label_hip, self.torque_sign)
             self.publish_worker.status_update.connect(self.on_publish_rate_update)
             self.publish_worker.error_occurred.connect(self.on_error)
 
@@ -1017,8 +1076,9 @@ class ROSInferenceUI(QMainWindow):
         self._plot_dirty = True
 
 #TODO: 髋部数据回调重写
-    def on_data_received_hip(self, moments: dict,relative_time: float,
-                         return_moment: dict, timestamp_sensor: float, timestamp_back: float):
+    def on_data_received_hip(self, moments: dict, relative_time: float,
+                         return_moment: dict, timestamp_sensor: float, timestamp_back: float,
+                         motor_angle: float):
         """接收到推理数据 - 包含时间戳
         timestamp_sensor 当前传感器对应的时间戳
         timestamp_back: 当前力矩对应推理时刻的时间戳
@@ -1028,6 +1088,7 @@ class ROSInferenceUI(QMainWindow):
         # 只有当 timestamp_back 不为0时才开始统计（刚启动时没有返回值）
         # 更新时间缓存（relative_time已经是相对时间，单位：秒）
         self.time_buffer.append(relative_time)
+        self.motor_angle_buffer.append(motor_angle)
 
         # 更新力矩缓存和返回值缓存
         for joint_name, value in moments.items():
@@ -1036,9 +1097,15 @@ class ROSInferenceUI(QMainWindow):
                 # 为每个关节保存相同的返回值
                 self.return_moment_buffers[joint_name].append(return_moment[joint_name])
 
+        if not moments:
+            return
+
         # 保存当前力矩值和返回值
         self.current_moments = moments
         self.current_return_moment = return_moment
+        self.current_motor_angle = motor_angle
+
+        self.last_timestamp_sensor = relative_time
 
         if self.publish_worker and self.is_publishing:
             self.publish_worker.update_moments_with_timestamp(
@@ -1072,7 +1139,8 @@ class ROSInferenceUI(QMainWindow):
         self._plot_dirty = True
 
     def on_data_received(self,  moments: dict, relative_time: float,
-                         return_moment: dict, timestamp_sensor: float, timestamp_back: float):
+                         return_moment: dict, timestamp_sensor: float, timestamp_back: float,
+                         motor_angle: float):
         """接收到推理数据 - 包含时间戳
         timestamp_sensor 当前传感器对应的时间戳
         timestamp_back: 当前力矩对应推理时刻的时间戳
@@ -1082,17 +1150,24 @@ class ROSInferenceUI(QMainWindow):
         # 只有当 timestamp_back 不为0时才开始统计（刚启动时没有返回值）
         # 更新时间缓存（relative_time已经是相对时间，单位：秒）
         self.time_buffer.append(relative_time)
+        self.motor_angle_buffer.append(motor_angle)
 
         # 更新力矩缓存和返回值缓存
         for joint_name, value in moments.items():
             if joint_name in self.moment_buffers:
                 self.moment_buffers[joint_name].append(value)
-                # 为每个关节保存相同的返回值
-                self.return_moment_buffers[joint_name].append(return_moment)
+                if joint_name in self.return_moment_buffers and joint_name in return_moment:
+                    self.return_moment_buffers[joint_name].append(return_moment[joint_name])
+
+        if not moments:
+            return
 
         # 保存当前力矩值和返回值
         self.current_moments = moments
         self.current_return_moment = return_moment
+        self.current_motor_angle = motor_angle
+
+        self.last_timestamp_sensor = timestamp_sensor
 
         if self.publish_worker and self.is_publishing:
             self.publish_worker.update_moments_with_timestamp(
@@ -1147,14 +1222,16 @@ class ROSInferenceUI(QMainWindow):
         times = list(self.time_buffer)
         values = list(self.moment_buffers[self.current_joint])
         return_values = list(self.return_moment_buffers[self.current_joint])
+        motor_angles = list(self.motor_angle_buffer)
 
         # ——关键修改：按共同长度对齐末尾，避免长度不等直接 return——
-        n = min(len(times), len(values), len(return_values))
+        n = min(len(times), len(values), len(return_values), len(motor_angles))
         if n < 2:
             return
         times = times[-n:]
         values = values[-n:]
         return_values = return_values[-n:]
+        motor_angles = motor_angles[-n:]
 
         # 发送值（推理值 × 体重 × 0.2）
         send_values = [v * self.body_weight * 0.2 for v in values]
@@ -1165,6 +1242,7 @@ class ROSInferenceUI(QMainWindow):
         current_time = times[-1]
         window_size = 10.0
         self.plot_widget.setXRange(max(0, current_time - window_size), current_time + 0.5)
+        self.motor_plot_widget.setXRange(max(0, current_time - window_size), current_time + 0.5)
 
         # Y 轴（带简单异常值过滤）
         all_values = send_values + return_values
@@ -1179,6 +1257,14 @@ class ROSInferenceUI(QMainWindow):
             else:
                 y_min, y_max = y_min - pad, y_max + pad
             self.plot_widget.setYRange(y_min, y_max)
+
+        valid_angles = [v for v in motor_angles if abs(v) < 1e6]
+        self.motor_angle_curve.setData(times, motor_angles)
+        if valid_angles:
+            angle_min = min(valid_angles)
+            angle_max = max(valid_angles)
+            angle_pad = max((angle_max - angle_min) * 0.1, 1.0)
+            self.motor_plot_widget.setYRange(angle_min - angle_pad, angle_max + angle_pad)
 
         #更新参数显示
         self.update_current_values()
@@ -1207,6 +1293,9 @@ class ROSInferenceUI(QMainWindow):
                     send_values = [v * self.body_weight * 0.2 for v in values]
                     peak = max(abs(min(send_values)), abs(max(send_values)))
                     self.peak_value_label.setText(f"峰值: {peak:.3f} Nm")
+
+        if self.current_motor_angle is not None:
+            self.motor_angle_value_label.setText(f"电机角度: {self.current_motor_angle:.3f}")
 
     def on_status_update(self, stats: dict):
         """更新性能状态"""
@@ -1269,7 +1358,7 @@ def main():
         '--side',
         type=str,
         choices=['r', 'l'],
-        default='l',
+        default='r',
         help='Leg side: r (right) or l (left)'
     )
 

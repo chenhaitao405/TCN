@@ -225,7 +225,6 @@ class DataPreprocessor:
         # thigh_imu_*_accel_x, thigh_imu_*_accel_y, thigh_imu_*_accel_z,
         # knee_angle_*, knee_angle_*_velocity_filt
 
-        side = self.side
         self.direct_mapping = {
             'motorPos': f'knee_angle_*',
             'motorVel': f'knee_angle_*_velocity_filt',
@@ -240,8 +239,6 @@ class DataPreprocessor:
     def get_default_values(self) -> Dict[str, float]:
         """获取缺失传感器的默认值"""
         defaults = {}
-        side = self.side
-
         # 为所有官方格式的传感器设置默认值
         for name in self.official_input_names:
             if 'gyro' in name:
@@ -264,6 +261,100 @@ class DataPreprocessor:
 
         return defaults
 
+    def _transform_imu(self, custom_data: Dict[str, float]):
+        """
+        将设备原始 IMU 坐标转换到模型使用的坐标系。
+
+        当前约定：
+        - 左腿设备原始坐标：X(下) Y(前) Z(内侧)
+        - 右腿设备原始坐标：X(下) Y(后) Z(内侧)
+
+        训练数据中左腿样本做过镜像修正（gyro_x / gyro_y / accel_z 取反），
+        因此这里需要：
+        - 左腿：按原有逻辑做论文坐标变换 + 左腿镜像修正
+        - 右腿：按镜像安装关系，直接转换到与左腿最终一致的模型输入坐标
+
+        注意：
+        - 加速度是极向量（polar vector）
+        - 角速度是轴向量（axial vector）
+        镜像变换时二者符号规则不同，因此不能共用同一个矩阵。
+        """
+        import numpy as np
+
+        acc_vec = np.array([
+            custom_data.get('acc_x', 0.0),
+            custom_data.get('acc_y', 0.0),
+            custom_data.get('acc_z', 0.0)
+        ], dtype=float)
+        gyro_vec = np.array([
+            custom_data.get('gyro_x', 0.0),
+            custom_data.get('gyro_y', 0.0),
+            custom_data.get('gyro_z', 0.0)
+        ], dtype=float)
+
+        if self.side == 'l':
+            # 左腿设备：X(下) Y(前) Z(内)
+            # 先转到论文坐标，再施加与训练阶段一致的左腿镜像修正
+            acc_transform = np.array([
+                [0, 1, 0],    # accel_x =  device_y
+                [-1, 0, 0],   # accel_y = -device_x
+                [0, 0, -1],   # accel_z = -device_z
+            ], dtype=float)
+            gyro_transform = np.array([
+                [0, -1, 0],   # gyro_x = -device_y
+                [1, 0, 0],    # gyro_y =  device_x
+                [0, 0, 1],    # gyro_z =  device_z
+            ], dtype=float)
+        else:
+            # 右腿设备镜像安装：X(下) Y(后) Z(内)
+            # 直接转换到与左腿“最终输入”一致的统一坐标
+            # acc_transform = np.array([
+            #     [0, -1, 0],   # accel_x = -device_y
+            #     [-1, 0, 0],   # accel_y = -device_x
+            #     [0, 0, 1],    # accel_z =  device_z
+            # ], dtype=float)
+            acc_transform = np.array([
+                [0, -1, 0],   # accel_x = -device_y
+                [-1, 0, 0],   # accel_y = -device_x
+                [0, 0, -1],    # accel_z =  -device_z
+            ], dtype=float)
+            # gyro_transform = np.array([
+            #     [0, 1, 0],    # gyro_x =  device_y
+            #     [1, 0, 0],    # gyro_y =  device_x
+            #     [0, 0, -1],   # gyro_z = -device_z
+            # ], dtype=float)
+            gyro_transform = np.array([
+                [0, -1, 0],    # gyro_x =  -device_y
+                [-1, 0, 0],    # gyro_y =  -device_x
+                [0, 0, -1],   # gyro_z = -device_z
+            ], dtype=float)
+
+        acc_transformed = acc_transform @ acc_vec
+        gyro_transformed = gyro_transform @ gyro_vec
+
+        return acc_transformed, gyro_transformed
+
+    def _transform_motor_pos(self, motor_pos: float) -> float:
+        """
+        将电机角度转换成模型使用的膝关节角度方向。
+
+        - 左腿：屈膝时 motorPos 从 180 减小
+        - 右腿：屈膝时 motorPos 从 180 增大
+        """
+        if self.side == 'r':
+            return 180- motor_pos
+        return motor_pos - 180.0
+
+    def _transform_motor_vel(self, motor_vel: float) -> float:
+        """
+        将电机速度方向与角度方向保持一致后，再沿用原有缩放/滤波流程。
+        """
+        if self.side == 'r':
+            motor_vel *= -1.0
+
+        motor_vel /= 2.0
+        return self.filter_velocity(motor_vel)
+
     def process(self, custom_data: Dict[str, float]) -> Dict[str, float]:
         """
         处理自定义格式数据，转换为官方格式
@@ -272,33 +363,9 @@ class DataPreprocessor:
         Returns:
             官方格式的数据字典
         """
-        import numpy as np
-
         # 初始化输出，使用默认值
         processed_data = self.default_values.copy()
-
-        # 始终应用坐标系转换（使用旋转矩阵）
-        # 定义旋转矩阵：将你的坐标系转换到论文坐标系
-        # 你的设备：X(下) Y(前) Z(内) -> 论文：X(前) Y(上) Z(内)
-        R = np.array([[0, 1, 0],  # paper_x = device_y
-                      [-1, 0, 0],  # paper_y = -device_x
-                      [0, 0, 1]])  # paper_z = device_z
-
-        # 提取IMU数据
-        acc_vec = np.array([
-            custom_data.get('acc_x', 0.0),
-            custom_data.get('acc_y', 0.0),
-            custom_data.get('acc_z', 0.0)
-        ])
-        gyro_vec = np.array([
-            custom_data.get('gyro_x', 0.0),
-            custom_data.get('gyro_y', 0.0),
-            custom_data.get('gyro_z', 0.0)
-        ])
-
-        # 应用旋转矩阵
-        acc_transformed = R @ acc_vec
-        gyro_transformed = R @ gyro_vec
+        acc_transformed, gyro_transformed = self._transform_imu(custom_data)
 
         # 创建转换后的数据字典
         transformed_data = custom_data.copy()
@@ -314,25 +381,11 @@ class DataPreprocessor:
             if custom_key in transformed_data and official_key in processed_data:
                 value = transformed_data[custom_key]
 
-                # 电机角度减180度
                 if custom_key == 'motorPos':
-                    value -= 180
+                    value = self._transform_motor_pos(value)
 
                 if custom_key == 'motorVel':
-                    value /= 2
-                    value = self.filter_velocity(value)
-
-                # if custom_key == 'acc_x' or custom_key == 'acc_y'or custom_key == 'acc_z':  # 匹配所有加速度相关的键
-                #     value = self.filter_velocity(value)
-
-
-                # 左腿镜像处理（如果需要）
-                if self.side == 'l':
-                    # 左腿需要反转某些轴（基于论文的坐标系）
-                    if 'gyro_x' in official_key or 'gyro_y' in official_key:
-                        value *= -1.0
-                    elif 'accel_z' in official_key:
-                        value *= -1.0
+                    value = self._transform_motor_vel(value)
 
                 processed_data[official_key] = value
 

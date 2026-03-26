@@ -9,7 +9,9 @@ from typing import Sequence, Tuple, List
 import numpy as np
 
 IMU_COLUMNS = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
-MOTOR_COLUMNS = ['motor_angle_L_float', 'motor_angle_R_float']
+MOTOR_COLUMNS = ['motor_angle_L_float', 'motor_angle_R_float',
+                #  'motor_vel_L_float', 'motor_vel_R_float'
+                 ]
 SENSORS = ['imuData2', 'motorAngle']
 SKIP_PATTERN = re.compile(r"skip|switch|start", re.IGNORECASE)
 

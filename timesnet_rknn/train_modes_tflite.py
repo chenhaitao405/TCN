@@ -11,6 +11,9 @@ import numpy as np
 import tensorflow as tf
 from data_utils import prepare_data
 
+import sys
+sys.path.append(".")
+
 # -----------------------------------------------------------------------------
 # Determinism and seeds
 # -----------------------------------------------------------------------------
@@ -28,8 +31,10 @@ def compute_channel_stats(samples: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return channel_mean, channel_std
 
 def build_model(window_size: int, num_features: int, num_classes: int, dropout: float) -> tf.keras.Model:
-    inputs = tf.keras.layers.Input(shape=(window_size, 1, num_features), name='imu_input')
-    x = tf.keras.layers.Reshape((window_size, num_features))(inputs)
+    # 输入维度 (B, C, 1, W) -> shape=(num_features, 1, window_size)
+    inputs = tf.keras.layers.Input(shape=(num_features, 1, window_size), name='imu_input')
+    # Reshape 去掉中间的1: (B, C, 1, W) -> (B, C, W)，Conv1D 在 W 上滑动，C 作为通道
+    x = tf.keras.layers.Reshape((num_features, window_size))(inputs)
     x = tf.keras.layers.Conv1D(64, kernel_size=7, strides=1, padding='same')(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
@@ -55,10 +60,20 @@ def build_model(window_size: int, num_features: int, num_classes: int, dropout: 
     return model
 
 def export_tflite(model: tf.keras.Model, output_path: Path) -> None:
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    input_layer = model.input
+    output_layer = model.output
+    num_classes = output_layer.shape[-1]
+
+    # 输出 (B, num_classes) -> (B, num_classes, 1, 1)
+    reshaped = tf.keras.layers.Reshape((num_classes, 1, 1))(output_layer)
+    model_with_reshape = tf.keras.Model(inputs=input_layer, outputs=reshaped)
+
+    converter = tf.lite.TFLiteConverter.from_keras_model(model_with_reshape)
     tflite_model = converter.convert()
     output_path.write_bytes(tflite_model)
     print(f"[info] Saved TFLite model to {output_path}")
+    print(f"[info] TFLite input shape: {model_with_reshape.input_shape}")   # (1, C, 1, W)
+    print(f"[info] TFLite output shape: {model_with_reshape.output_shape}") # (1, num_classes, 1, 1)
 
 def dump_stats(stats_path: Path, mean: np.ndarray, std: np.ndarray, class_names: Sequence[str],
                window_size: int, num_features: int) -> None:
@@ -75,6 +90,7 @@ def dump_stats(stats_path: Path, mean: np.ndarray, std: np.ndarray, class_names:
 
 def make_calibration_dataset(raw_samples: np.ndarray, output_dir: Path,
                              max_samples: int) -> Path:
+    """raw_samples shape: (N, W, C)，校准文件保存为 (1, C, 1, W)"""
     output_dir.mkdir(parents=True, exist_ok=True)
     indices = np.arange(raw_samples.shape[0])
     np.random.shuffle(indices)
@@ -82,31 +98,38 @@ def make_calibration_dataset(raw_samples: np.ndarray, output_dir: Path,
     dataset_txt = output_dir / 'calibration_list.txt'
     with open(dataset_txt, 'w') as handle:
         for idx in indices[:limit]:
-            sample = raw_samples[idx]
-            # RKNN calibration expects NCHW (batch, channel, height, width)
-            sample = np.transpose(sample, (1, 0))  # (features, window)
-            sample = sample[:, :, np.newaxis]      # (features, window, 1)
-            sample = np.expand_dims(sample, axis=0)  # (1, features, window, 1)
+            sample = raw_samples[idx]            # (W, C)
+            sample = np.transpose(sample, (1, 0))  # (C, W)
+            sample = sample[:, np.newaxis, :]      # (C, 1, W)
+            sample = np.expand_dims(sample, axis=0)  # (1, C, 1, W)
+            sample = np.ascontiguousarray(sample, dtype=np.float32)
             sample_path = output_dir / f'sample_{idx:05d}.npy'
-            np.save(sample_path, sample.astype(np.float32))
+            np.save(sample_path, sample)
             handle.write(str(sample_path.resolve()) + '\n')
     print(f"[info] Created calibration dataset with {limit} samples -> {dataset_txt}")
     return dataset_txt
 
+def preprocess_x(x_raw: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
+    """归一化并转换维度: (N, W, C) -> (N, C, 1, W)"""
+    x = (x_raw - mean) / std          # (N, W, C)
+    x = np.transpose(x, (0, 2, 1))    # (N, C, W)
+    x = np.expand_dims(x, axis=2)     # (N, C, 1, W)
+    return x
+
 def main() -> None:
     parser = argparse.ArgumentParser(description='Train IMU mode classifier and export TFLite model')
     parser.add_argument('--train-list', type=str,
-                        default='1208_lehiuju_val.txt')
+                        default='timesnet_rknn/1208_lehiuju_train.txt')
     parser.add_argument('--val-list', type=str,
-                        default='1208_lehiuju_val.txt')
-    parser.add_argument('--dataset-root', type=str, default='/home/xietao/timesnet_rknn')
+                        default='timesnet_rknn/1208_lehiuju_val.txt')
+    parser.add_argument('--dataset-root', type=str, default='timesnet_rknn')
     parser.add_argument('--output-dir', type=str, default='artifacts/latest_run')
     parser.add_argument('--window-size', type=int, default=100)
     parser.add_argument('--segments-per-record', type=int, default=5)
     parser.add_argument('--epochs', type=int, default=5)
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--dropout', type=float, default=0.25)
-    parser.add_argument('--calibration-samples', type=int, default=256)
+    parser.add_argument('--calibration-samples', type=int, default=64)
     parser.add_argument('--class-names', type=str,
                         default='upstair,downstair,walk,stand',
                         help='Comma separated class names, used as substring match')
@@ -124,21 +147,22 @@ def main() -> None:
     val_x_raw, val_y = prepare_data(args.val_list, dataset_root, class_names,
                                     args.window_size, args.segments_per_record)
 
+    # train_x_raw shape: (N, W, C)
     channel_mean, channel_std = compute_channel_stats(train_x_raw)
     dump_stats(output_dir / 'dataset_stats.json', channel_mean, channel_std,
                class_names, args.window_size, train_x_raw.shape[-1])
 
-    train_x = (train_x_raw - channel_mean) / channel_std
-    val_x = (val_x_raw - channel_mean) / channel_std
-
-    train_x = np.expand_dims(train_x, axis=2)
-    val_x = np.expand_dims(val_x, axis=2)
+    # 归一化 + reshape -> (N, C, 1, W)
+    train_x = preprocess_x(train_x_raw, channel_mean, channel_std)
+    val_x = preprocess_x(val_x_raw, channel_mean, channel_std)
+    print(f"[info] train_x shape: {train_x.shape}")  # (N, C, 1, W)
+    print(f"[info] val_x shape:   {val_x.shape}")
 
     num_classes = len(class_names)
     train_y_one_hot = tf.keras.utils.to_categorical(train_y, num_classes=num_classes)
     val_y_one_hot = tf.keras.utils.to_categorical(val_y, num_classes=num_classes)
 
-    model = build_model(args.window_size, train_x.shape[-1], num_classes, args.dropout)
+    model = build_model(args.window_size, train_x.shape[1], num_classes, args.dropout)
     model.summary()
 
     callbacks = [
@@ -178,6 +202,7 @@ def main() -> None:
     tflite_path = output_dir / 'modes_cnn_fp32.tflite'
     export_tflite(model, tflite_path)
 
+    # 校准数据用原始未归一化数据，make_calibration_dataset 内部只做维度变换
     calibration_dir = output_dir / 'calibration_samples'
     make_calibration_dataset(train_x_raw, calibration_dir, args.calibration_samples)
 

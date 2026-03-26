@@ -1,0 +1,5 @@
+add_subdirectory(infer)
+add_subdirectory(npy_infer)
+add_subdirectory(test)
+add_subdirectory(data_collection)
+add_subdirectory(4g_gps)

@@ -39,7 +39,8 @@ def main() -> None:
         raise FileNotFoundError(args.dataset)
 
     mean, std = load_stats(args.stats)
-
+    print(mean, std)
+    
     do_quant = args.dtype == 'i8'
 
     rknn = RKNN(verbose=True)
@@ -49,17 +50,19 @@ def main() -> None:
         target_platform=args.target,
         mean_values=[mean],
         std_values=[std],
-        optimization_level=3,
+        optimization_level=3
     )
     if do_quant:
-        config_kwargs['quantized_dtype'] = 'asymmetric_quantized-8'
+        config_kwargs['quantized_dtype'] = 'w8a8'
+        config_kwargs['quantized_algorithm'] = 'mmse'
+        config_kwargs['quantized_method'] = 'channel'
 
     ret = rknn.config(**config_kwargs)
     if ret != 0:
         raise RuntimeError(f'rknn.config failed ({ret})')
 
     print('[info] Loading TFLite model...')
-    ret = rknn.load_tflite(model=str(args.tflite))
+    ret = rknn.load_tflite(model=str(args.tflite), input_is_nchw=True)
     if ret != 0:
         raise RuntimeError(f'rknn.load_tflite failed ({ret})')
 
