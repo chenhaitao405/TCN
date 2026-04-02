@@ -1,5 +1,5 @@
-#include "rknn_api.h"
-#include "model_process/model_info_parse.hpp"
+#include "rknn/rknn_api.h"
+#include "model_process/model_process.h"
 
 #include <atomic>
 #include <algorithm>

@@ -1,4 +1,4 @@
-#include "rknn_api.h"
+#include "rknn/rknn_api.h"
 #include <stdio.h>
 #include <vector>
 #include <algorithm>

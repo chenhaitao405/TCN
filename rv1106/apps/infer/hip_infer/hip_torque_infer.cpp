@@ -1,4 +1,4 @@
-#include "rknn_api.h"
+#include "rknn/rknn_api.h"
 #include "model_process/model_process.h"
 #include "data_process/hip_data_producer.h"
 #include "timing/periodic_timer.h"
@@ -19,7 +19,7 @@
 static Dsp::SimpleFilter<Dsp::Butterworth::LowPass<2>, 1> g_output_filter;
 static bool g_output_filter_initialized = false;
 
-static float filter_output(float value) {
+static inline float filter_output(float value) {
     float* channels[1] = {&value};
     g_output_filter.process(1, channels);
     return value;
@@ -46,6 +46,7 @@ void print_usage(const char *prog_name)
     printf("    serial_port         Serial port for MCU communication (e.g., /dev/ttyS3)\n\n");
     printf("Options:\n");
     printf("    -s, --side <l|r>    Leg side: 'l' for left, 'r' for right (default: l)\n");
+    printf("    -w, --weight <kg>   Body weight in kg for torque scaling (default: 70.0)\n");
     printf("    -m, --moment        Enable torque transfer to exoskeleton\n");
     printf("    -d, --debug         Debug to show more information\n");
     printf("    -h, --help          Show this help message and exit\n\n");
@@ -58,17 +59,19 @@ int main(int argc, char **argv)
 {
     static const struct option long_options[] = {
         {"side", required_argument, nullptr, 's'},
+        {"weight", required_argument, nullptr, 'w'},
         {"moment", no_argument, nullptr, 'm'},
         {"debug", no_argument, nullptr, 'd'},
         {"help", no_argument, nullptr, 'h'},
         {0, 0, 0, 0}};
 
     char side = 'l';
+    float body_weight_kg = 70.0f;
     bool transfer_moment = false;
     bool debug = false;
     int opt;
 
-    while ((opt = getopt_long(argc, argv, "s:mdh", long_options, nullptr)) != -1)
+    while ((opt = getopt_long(argc, argv, "s:w:mdh", long_options, nullptr)) != -1)
     {
         switch (opt)
         {
@@ -81,6 +84,20 @@ int main(int argc, char **argv)
             side = optarg[0];
             printf("Processing for %s leg\n", side == 'l' ? "LEFT" : "RIGHT");
             break;
+
+        case 'w':
+        {
+            char *end_ptr = nullptr;
+            double parsed = std::strtod(optarg, &end_ptr);
+            if (end_ptr == optarg || (end_ptr && *end_ptr != '\0') || parsed <= 0.0)
+            {
+                printf("invalid body weight: %s\n", optarg);
+                return 1;
+            }
+            body_weight_kg = static_cast<float>(parsed);
+            printf("Body weight set to %.1f kg\n", body_weight_kg);
+            break;
+        }
 
         case 'm':
             printf("moment transfer function is on\n");
@@ -118,6 +135,7 @@ int main(int argc, char **argv)
     printf("Model path: %s\n", model_path);
     printf("Serial port: %s\n", serial_port.c_str());
     printf("Leg side: %s\n", side == 'l' ? "LEFT" : "RIGHT");
+    printf("Body weight: %.1f kg\n", body_weight_kg);
     printf("Inference: %s\n", "enabled");
     printf("Moment transfer: %s\n", transfer_moment ? "enabled" : "disabled");
     printf("Debug mode: %s\n", debug ? "enabled" : "disabled");
@@ -270,12 +288,12 @@ int main(int argc, char **argv)
         total_infer_ms += infer_ms;
         ++infer_count;
 
-        float raw_output = (((int32_t)((int8_t *)output_mems[0]->virt_addr)[Hip::STREAM_LENGTH - 1]) - output_attrs[0].zp) * output_attrs[0].scale;
+        float raw_output = get_torque_from_output(output_mems[0]->virt_addr, output_attrs[0]);
         float filtered_output = filter_output(raw_output);
 
         ++moment_send_count;
         if (transfer_moment && moment_send_count % 2 == 0)
-            hip_producer::sendData(filtered_output, 0x00, 0x00);
+            hip_producer::sendData(filtered_output * body_weight_kg * 0.2f, 0x00, 0x00);
 
         if (debug && infer_count % 50 == 0)
         {

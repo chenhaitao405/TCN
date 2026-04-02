@@ -1,8 +1,8 @@
-#include "rknn_api.h"
+#include "rknn/rknn_api.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include "model_process/model_info_parse.hpp"
+#include "model_process/model_process.h"
 #include "fp16/Float16.h"
 #include <csignal>
 #include <chrono>

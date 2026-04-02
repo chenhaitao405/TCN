@@ -3,9 +3,15 @@ add_library(peripherals STATIC
     peripherals/lsm6dsr.cpp
     peripherals/bm85163.cpp
     peripherals/qmc5883p.cpp
+    i2c/i2c_bus.cpp
+    gpio/gpio.cpp
+    serial/uart_serial.cpp
 )
 target_include_directories(peripherals PUBLIC
     ${PROJECT_INCLUDE_DIR}
+)
+target_link_libraries(peripherals PUBLIC
+    Threads::Threads
 )
 
 # ==================== Knee 数据生产者库 ====================

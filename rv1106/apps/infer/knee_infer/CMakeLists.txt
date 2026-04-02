@@ -1,7 +1,6 @@
 # ==================== Knee Pattern 推理程序 ====================
 add_executable(knee_pattern_infer knee_pattern_infer.cpp)
 target_include_directories(knee_pattern_infer PRIVATE
-    ${RKNN_API_PATH}/include
     ${PROJECT_INCLUDE_DIR}
 )
 target_link_libraries(knee_pattern_infer
@@ -15,7 +14,6 @@ target_link_libraries(knee_pattern_infer
 # ==================== Knee Torque 推理程序 ====================
 add_executable(knee_torque_infer knee_torque_infer.cpp)
 target_include_directories(knee_torque_infer PRIVATE
-    ${RKNN_API_PATH}/include
     ${PROJECT_INCLUDE_DIR}
 )
 target_link_libraries(knee_torque_infer
@@ -29,7 +27,6 @@ target_link_libraries(knee_torque_infer
 # ==================== Knee Torque 推理+录制程序 ====================
 add_executable(knee_torque_infer_record knee_torque_infer_record.cpp)
 target_include_directories(knee_torque_infer_record PRIVATE
-    ${RKNN_API_PATH}/include
     ${PROJECT_INCLUDE_DIR}
 )
 target_link_libraries(knee_torque_infer_record

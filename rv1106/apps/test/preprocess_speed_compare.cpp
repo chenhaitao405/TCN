@@ -3,7 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <memory.h>
-#include "rknn_api.h"
+#include "rknn/rknn_api.h"
 #include <chrono>
 #define ALIGNED_CHANNEL 16
 

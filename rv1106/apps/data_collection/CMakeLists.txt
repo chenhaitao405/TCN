@@ -4,7 +4,6 @@
 add_executable(rf_data_collection_hip by_serial/rf_data_collection_hip.cpp)
 target_include_directories(rf_data_collection_hip PRIVATE
     ${PROJECT_INCLUDE_DIR}
-    ${RKNN_API_PATH}/include
 )
 target_link_libraries(rf_data_collection_hip
     peripherals
@@ -15,7 +14,6 @@ target_link_libraries(rf_data_collection_hip
 add_executable(rf_data_collection_knee by_serial/rf_data_collection_knee.cpp)
 target_include_directories(rf_data_collection_knee PRIVATE
     ${PROJECT_INCLUDE_DIR}
-    ${RKNN_API_PATH}/include
 )
 target_link_libraries(rf_data_collection_knee
     peripherals

@@ -3,17 +3,16 @@
 # --- 功耗温度测试（需要 RKNN） ---
 add_executable(power_temp_test power_temp_test.cpp)
 target_include_directories(power_temp_test PRIVATE
-    ${RKNN_API_PATH}/include
     ${PROJECT_INCLUDE_DIR}
 )
 target_link_libraries(power_temp_test
     ${RKNN_RT_LIB}
+    peripherals
 )
 
 # --- CPU+NPU 满载功耗测试（需要 RKNN） ---
 add_executable(full_power_test full_power_test.cpp)
 target_include_directories(full_power_test PRIVATE
-    ${RKNN_API_PATH}/include
     ${PROJECT_INCLUDE_DIR}
 )
 target_link_libraries(full_power_test
@@ -24,7 +23,6 @@ target_link_libraries(full_power_test
 # --- 预处理速度对比（需要 RKNN） ---
 add_executable(preprocess_speed_compare preprocess_speed_compare.cpp)
 target_include_directories(preprocess_speed_compare PRIVATE
-    ${RKNN_API_PATH}/include
     ${PROJECT_INCLUDE_DIR}
 )
 target_link_libraries(preprocess_speed_compare
@@ -34,7 +32,6 @@ target_link_libraries(preprocess_speed_compare
 # --- 预处理结果一致性对比 ---
 add_executable(preprocess_result_test preprocess_result_test.cpp)
 target_include_directories(preprocess_result_test PRIVATE
-    ${RKNN_API_PATH}/include
     ${PROJECT_INCLUDE_DIR}
 )
 target_link_libraries(preprocess_result_test
@@ -49,6 +46,7 @@ target_include_directories(test_gpio_uart PRIVATE
     ${PROJECT_INCLUDE_DIR}/gpio
 )
 target_link_libraries(test_gpio_uart
+    peripherals
     Threads::Threads
 )
 
@@ -84,9 +82,18 @@ target_link_libraries(test_bm85163
     peripherals
 )
 
+add_executable(int16_quantize_model_test int16_quantize_model_test.cpp)
+target_include_directories(int16_quantize_model_test PRIVATE
+    ${PROJECT_INCLUDE_DIR}
+)
+target_link_libraries(int16_quantize_model_test
+    ${RKNN_RT_LIB}
+)
+
 install(TARGETS
-    power_temp_test full_power_test preprocess_speed_compare preprocess_result_test
+    power_temp_test full_power_test preprocess_speed_compare preprocess_result_test int16_quantize_model_test
     test_gpio_uart test_imu
     test_qmc5883p test_bm85163
     DESTINATION test
 )
+

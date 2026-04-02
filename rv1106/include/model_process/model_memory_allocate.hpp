@@ -1,5 +1,5 @@
 #pragma once
-#include "rknn_api.h"
+#include "rknn/rknn_api.h"
 #include <vector>
 
 void resource_destroy(rknn_context& ctx, std::vector<rknn_tensor_mem *> input_mems, std::vector<rknn_tensor_mem *> output_mems)

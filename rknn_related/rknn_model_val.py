@@ -35,6 +35,8 @@ def create_argument_parser():
                         help='Path to trained model checkpoint')
     parser.add_argument('--debug', action="store_true", default=False,
                         help='show more information')
+    parser.add_argument('--int16', action="store_true", default=False,
+                        help='show more information')
     return parser
 
 
@@ -122,20 +124,31 @@ def main():
                 continue
             
             save_inputs = inputs.unsqueeze(-2).numpy().astype(np.float32)  # (1,C,1,L)
-            np.save("rknn_related/tmp_slice_inputs.npy", save_inputs)
+            np.save("rknn_related/tmp_slice_inputs.npy", save_inputs, allow_pickle=True)
             
-            result = subprocess.run(["adb", "push", "rknn_related/tmp_slice_inputs.npy", "/tmp/npy_infer_Linux/model/"]
+            result = subprocess.run(["adb", "push", "rknn_related/tmp_slice_inputs.npy", "/tmp/"]
                                     , stdout=None if args.debug else subprocess.DEVNULL)
             assert result.returncode == 0, "send npy file failed, check out usb wire connection"
             
-            result = subprocess.run(["adb", "shell", "/tmp/npy_infer_Linux/npy_infer", "/tmp/npy_infer_Linux/model/trained_quantcn_8_sensors.rknn",
-                "/tmp/npy_infer_Linux/model/tmp_slice_inputs.npy"], stdout=None if args.debug else subprocess.DEVNULL)
+            result = subprocess.run(["adb", "shell", "/root/apps/npy_infer/knee_torque_npy_infer", "/root/apps/model/torque_quantcn_8_sensors_int16.rknn" if args.int16 else "/root/apps/model/torque_quantcn_8_sensors_int8.rknn",
+                "/tmp/tmp_slice_inputs.npy"], stdout=None if args.debug else subprocess.DEVNULL)
             assert result.returncode == 0, "model infer error occur"
+
+            local_adb_bin = "rknn_related/adb_data.bin"
+            result = subprocess.run(
+                ["adb", "pull", "/tmp/adb_data.bin", local_adb_bin],
+                stdout=None if args.debug else subprocess.DEVNULL,
+                stderr=None if args.debug else subprocess.DEVNULL
+            )
+            assert result.returncode == 0, "adb pull /tmp/adb_data.bin failed"
             
-            with open("rknn_related/adb_data.bin", "rb") as f:
-                outputs = np.fromfile(f, dtype=np.int8)
-                estimates = (outputs + 63) * 0.012425
-                estimates = torch.from_numpy(estimates).float().reshape(batch_size, -1, L)
+            with open(local_adb_bin, "rb") as f:
+                outputs = np.fromfile(f, dtype=np.float32)
+                expected_count = batch_size * L
+                assert outputs.size == expected_count, (
+                    f"invalid output length from adb_data.bin, got {outputs.size}, expected {expected_count}"
+                )
+                estimates = torch.from_numpy(outputs).float().reshape(batch_size, -1, L)
             if torch.isnan(estimates).any():
                 continue
             

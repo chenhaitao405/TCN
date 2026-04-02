@@ -1,4 +1,4 @@
-#include "rknn_api.h"
+#include "rknn/rknn_api.h"
 #include "model_process/model_process.h"
 #include "data_process/hip_data_producer.h"
 #include "timing/periodic_timer.h"

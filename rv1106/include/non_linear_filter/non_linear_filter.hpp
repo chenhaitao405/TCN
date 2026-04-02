@@ -60,7 +60,7 @@ private:
         if (v > hi) return hi;
         return v;
     }
-    NonLinearFilter() : _input_limit(0.40f), _output_limit(0.60f), _power_pos(1.50f), _power_neg(2.50f), _gain_pos(1.80f), _gain_neg(0.80f) {
+    NonLinearFilter() : _input_limit(0.40f), _output_limit(0.60f), _power_pos(2.00f), _power_neg(2.50f), _gain_pos(3.00f), _gain_neg(0.80f) {
 
     }
 };

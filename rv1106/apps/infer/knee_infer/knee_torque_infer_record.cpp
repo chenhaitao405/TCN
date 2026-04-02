@@ -1,4 +1,4 @@
-#include "rknn_api.h"
+#include "rknn/rknn_api.h"
 #include "model_process/model_process.h"
 #include "data_process/knee_data_producer.h"
 #include <cassert>
@@ -23,7 +23,7 @@
 static Dsp::SimpleFilter<Dsp::Butterworth::LowPass<2>, 1> g_output_filter;
 static bool g_output_filter_initialized = false;
 
-static float filter_output(float value) {
+static inline float filter_output(float value) {
     float* channels[1] = {&value};
     g_output_filter.process(1, channels);
     return value;
@@ -49,6 +49,7 @@ void print_usage(const char* prog_name) {
     printf("    imu_port            Serial port for IMU device (e.g., /dev/ttyUSB0)\n\n");
     printf("Options:\n");
     printf("    -s, --side <l|r>    Leg side: 'l' for left, 'r' for right (default: l)\n");
+    printf("    -w, --weight <kg>   Body weight in kg for torque scaling (default: 70.0)\n");
     printf("    -i, --infer         Enable inference mode\n");
     printf("    -r, --record        Enable recording mode (save raw IMU data)\n");
     printf("    -p, --path <path>   Path to save recorded data (default: %s)\n", RECORD_FILE_PATH_DEFAULT);
@@ -65,6 +66,7 @@ void print_usage(const char* prog_name) {
 int main(int argc, char** argv) {
     static const struct option long_options[] = {
         {"side",    required_argument, nullptr, 's'},
+        {"weight",  required_argument, nullptr, 'w'},
         {"infer",   no_argument,       nullptr, 'i'},
         {"record",  no_argument,       nullptr, 'r'},
         {"path",    required_argument, nullptr, 'p'},
@@ -76,6 +78,7 @@ int main(int argc, char** argv) {
     };
 
     char side = 'l';
+    float body_weight_kg = 70.0f;
     bool do_infer = false;
     bool record_data = false;
     bool debug = false;
@@ -84,7 +87,7 @@ int main(int argc, char** argv) {
     int record_num = -1;
     int opt;
 
-    while ((opt = getopt_long(argc, argv, "s:irp:n:mdh", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "s:w:irp:n:mdh", long_options, nullptr)) != -1) {
         switch (opt) {
             case 's':
                 if (optarg[0] != 'l' && optarg[0] != 'r') {
@@ -94,6 +97,18 @@ int main(int argc, char** argv) {
                 side = optarg[0];
                 printf("Processing for %s leg\n", side == 'l' ? "LEFT" : "RIGHT");
                 break;
+
+            case 'w': {
+                char* end_ptr = nullptr;
+                double parsed = std::strtod(optarg, &end_ptr);
+                if (end_ptr == optarg || (end_ptr && *end_ptr != '\0') || parsed <= 0.0) {
+                    printf("invalid body weight: %s\n", optarg);
+                    return 1;
+                }
+                body_weight_kg = static_cast<float>(parsed);
+                printf("Body weight set to %.1f kg\n", body_weight_kg);
+                break;
+            }
 
             case 'r':
                 printf("record function is on\n");
@@ -161,6 +176,7 @@ int main(int argc, char** argv) {
     printf("Model path: %s\n", model_path);
     printf("IMU port: %s\n", imu_port.c_str());
     printf("Leg side: %s\n", side == 'l' ? "LEFT" : "RIGHT");
+    printf("Body weight: %.1f kg\n", body_weight_kg);
     printf("Inference: %s\n", do_infer ? "enabled" : "disabled");
     printf("Recording: %s\n", record_data ? "enabled" : "disabled");
     if (record_data) {
@@ -347,17 +363,18 @@ int main(int argc, char** argv) {
         infer_count++;
 
         // 获取输出并滤波
-        float raw_output = (((int32_t)((int8_t*)output_mems[0]->virt_addr)[Knee::STREAM_LENGTH - 1]) - output_attrs[0].zp) * output_attrs[0].scale;
+        float raw_output = get_torque_from_output(output_mems[0]->virt_addr, output_attrs[0]);
         float filtered_output = filter_output(raw_output);
-        if (side == 'r')
-			filtered_output *= -1;
+        
         filtered_output = non_linear_filter.nonlinear_filter_output(filtered_output);
 		if (src_buffer.back().motorPos > 0.0f) filtered_output = 0.0f;
+        if (side == 'r')
+			filtered_output *= -1;
 
         // 发送力矩指令 (每2次推理下发一次，保持100Hz)
         moment_send_count++;
         if (transfer_moment && moment_send_count % 2 == 0)
-            knee_producer::sendMoment(filtered_output * 12, 0.0f);
+            knee_producer::sendMoment(filtered_output * body_weight_kg * 0.2f, 0.0f);
 
         if (debug && infer_count % 20 == 0) {
             const auto& last = src_buffer.back();

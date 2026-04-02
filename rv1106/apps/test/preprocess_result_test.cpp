@@ -11,8 +11,7 @@
 
 #include "boost/circular_buffer.hpp"
 #include "data_stream.h"
-#include "model_process/model_info_parse.hpp"
-#include "model_process/model_setting.h"
+#include "model_process/model_process.h"
 
 namespace {
 
@@ -64,8 +63,8 @@ bool run_one_case(int total_frames,
 	boost::circular_buffer<Hip::DataFrame> buffer(total_frames);
 	fill_random_buffer(buffer, total_frames, seed);
 
-	std::vector<int8_t> out_fast(w * ALIGNED_CHANNEL, 0);
-	std::vector<int8_t> out_nchw(w * ALIGNED_CHANNEL, 0);
+	std::vector<int8_t> out_fast(w * ALIGNED_CHANNEL_INT8, 0);
+	std::vector<int8_t> out_nchw(w * ALIGNED_CHANNEL_INT8, 0);
 
 	const int ret_fast = fast_NHWC_float32_circular_buffer_to_NC1HWC2_int8(
 		buffer,
@@ -104,11 +103,11 @@ bool run_one_case(int total_frames,
 	}
 
 	int mismatch_count = 0;
-	for (int i = 0; i < w * ALIGNED_CHANNEL; ++i) {
+	for (int i = 0; i < w * ALIGNED_CHANNEL_INT8; ++i) {
 		if (out_fast[i] != out_nchw[i]) {
 			if (mismatch_count < 16) {
-				const int x = i / ALIGNED_CHANNEL;
-				const int c = i % ALIGNED_CHANNEL;
+				const int x = i / ALIGNED_CHANNEL_INT8;
+				const int c = i % ALIGNED_CHANNEL_INT8;
 				std::cerr << "[Mismatch] case=" << case_id
 						  << " x=" << x
 						  << " c=" << c
@@ -123,7 +122,7 @@ bool run_one_case(int total_frames,
 	if (mismatch_count > 0) {
 		std::cerr << "[FAIL] case " << case_id
 				  << " mismatch bytes=" << mismatch_count
-				  << " / " << (w * ALIGNED_CHANNEL) << '\n';
+				  << " / " << (w * ALIGNED_CHANNEL_INT8) << '\n';
 		return false;
 	}
 

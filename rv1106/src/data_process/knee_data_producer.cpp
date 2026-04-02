@@ -62,7 +62,7 @@ bool start_serial2mcu(const std::string& portName) {
     std::vector<uint8_t> end = {KNEE_DATA_END1, KNEE_DATA_END2};
     timeval timeout = {0, 15000};  // 15ms超时
     
-    serial2mcu = SerialLoop<48>::create(portName, head, end, B115200, timeout);
+    serial2mcu = SerialLoop<48>::create(portName, head, end, B921600, timeout);
     if (!serial2mcu) {
         return false;
     }
@@ -76,6 +76,14 @@ bool start_serial2mcu(const std::string& portName) {
     serial2mcu->setCallback([&](const uint8_t* frame) {
         KneeData knee_data;
         memcpy(&knee_data, frame, sizeof(KneeData));
+
+        // 单位转换
+        knee_data.acc_x = knee_data.acc_x / 1000.0f * 9.81f;
+        knee_data.acc_y = knee_data.acc_y / 1000.0f * 9.81f;
+        knee_data.acc_z = knee_data.acc_z / 1000.0f * 9.81f;
+        knee_data.gyro_x = knee_data.gyro_x / 1000.0f;
+        knee_data.gyro_y = knee_data.gyro_y / 1000.0f;
+        knee_data.gyro_z = knee_data.gyro_z / 1000.0f;
 
         #ifdef DEBUG
             static int count = 0;
